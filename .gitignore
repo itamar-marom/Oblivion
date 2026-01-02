@@ -1,3 +1,7 @@
+# ==========================================
+# PYTHON
+# ==========================================
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -27,8 +31,6 @@ share/python-wheels/
 MANIFEST
 
 # PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
 
@@ -83,48 +85,22 @@ profile_default/
 ipython_config.py
 
 # pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
+.python-version
 
 # UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
+# uv.lock - Keep in version control for reproducibility
 
 # poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
-#poetry.toml
+# poetry.lock - Keep in version control for reproducibility
 
 # pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
-#   https://pdm-project.org/en/latest/usage/project/#working-with-version-control
-#pdm.lock
-#pdm.toml
 .pdm-python
 .pdm-build/
 
 # pixi
-#   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
-#pixi.lock
-#   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
-#   in the .venv directory. It is recommended not to include this directory in version control.
 .pixi
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
+# PEP 582
 __pypackages__/
 
 # Celery stuff
@@ -136,7 +112,10 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
 .envrc
+!.env.example
+!.env.template
 .venv
 env/
 venv/
@@ -168,40 +147,404 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
-
-# Abstra
-# Abstra is an AI-powered process automation framework.
-# Ignore directories containing user credentials, local state, and settings.
-# Learn more at https://abstra.io/docs
-.abstra/
-
-# Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#  you could uncomment the following to ignore the entire vscode folder
-# .vscode/
-
-# Ruff stuff:
+# Ruff
 .ruff_cache/
 
-# PyPI configuration file
+# PyPI configuration
 .pypirc
 
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
-.cursorignore
-.cursorindexingignore
+# Abstra
+.abstra/
 
 # Marimo
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+# ==========================================
+# NODE.JS & NPM/PNPM/YARN
+# ==========================================
+
+# Dependencies
+node_modules/
+jspm_packages/
+
+# Package manager files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Serverless directories
+.serverless/
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+
+# ==========================================
+# TYPESCRIPT
+# ==========================================
+
+# TypeScript build outputs
+*.tsbuildinfo
+dist/
+out/
+.next/out/
+
+
+# ==========================================
+# NEXT.JS & FRONTEND BUILD TOOLS
+# ==========================================
+
+# Next.js build output
+.next/
+out/
+
+# Next.js cache
+.next/cache/
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+public
+
+# Vuepress build output
+.vuepress/dist
+
+# Vite build output
+dist-ssr
+
+# Temp directories
+tmp/
+temp/
+
+# Storybook build outputs
+storybook-static
+
+# Turbopack cache
+.turbo
+
+# Parcel cache
+.parcel-cache
+
+# Webpack cache
+.cache-loader
+
+# Rollup cache
+.rollup.cache
+
+
+# ==========================================
+# TESTING & COVERAGE
+# ==========================================
+
+# Jest
+coverage/
+.nyc_output
+
+# Playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
+# Vitest
+vitest.config.*.timestamp-*
+
+
+# ==========================================
+# IDES & EDITORS
+# ==========================================
+
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# JetBrains IDEs (WebStorm, PyCharm, IntelliJ, etc.)
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+Sessionx.vim
+.netrwhist
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Cursor
+.cursorignore
+.cursorindexingignore
+
+
+# ==========================================
+# OPERATING SYSTEMS
+# ==========================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+
+# ==========================================
+# DOCKER & CONTAINERS
+# ==========================================
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+
+# ==========================================
+# DATABASES
+# ==========================================
+
+# SQLite
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# PostgreSQL
+*.pgsql
+
+# MySQL
+*.sql
+*.mysql
+
+
+# ==========================================
+# LOGS & TEMPORARY FILES
+# ==========================================
+
+# Log files
+*.log
+logs/
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+
+# ==========================================
+# SECRETS & CREDENTIALS
+# ==========================================
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+!.env.example
+!.env.template
+!.env.sample
+
+# Secrets
+secrets/
+*.pem
+*.key
+*.cert
+*.crt
+.secrets/
+.credentials/
+
+# API keys and tokens
+.apikeys
+*.secrets
+
+
+# ==========================================
+# BUILD ARTIFACTS & CACHES
+# ==========================================
+
+# Build outputs
+build/
+dist/
+out/
+.output/
+.vercel
+.netlify
+
+# Cache directories
+.cache/
+.tmp/
+.temp/
+
+# Lock files (keep these for reproducibility)
+# Uncomment if you want to ignore them:
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+# uv.lock
+# poetry.lock
+
+
+# ==========================================
+# MISCELLANEOUS
+# ==========================================
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# Archive files (usually not needed in repo)
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Local configuration
+.localrc
+local.config.js
+local.config.ts
+
+# Generated files
+generated/
+auto-generated/
+
+# Sentry
+.sentryclirc
+
+# Amplify
+amplify/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Vercel
+.vercel
+
+# Turborepo
+.turbo
+
+# Wireit
+.wireit
