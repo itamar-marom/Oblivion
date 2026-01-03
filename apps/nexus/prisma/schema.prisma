@@ -1,0 +1,160 @@
+// Oblivion Database Schema
+// Reference: product/PRD.md - Section 3 (Container System)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// LEVEL 1: TENANT (Workgroup/Squad)
+// =============================================================================
+// Represents a permanent engineering squad or department.
+// All data is isolated at the tenant level (multi-tenancy).
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String   // e.g., "Backend Squad", "Platform Team"
+  slug      String   @unique // URL-friendly identifier
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  agents          Agent[]
+  projectMappings ProjectMapping[]
+  agentAliases    AgentAlias[]
+
+  @@map("tenants")
+}
+
+// =============================================================================
+// LEVEL 2: PROJECT MAPPING (ClickUp List <-> Slack Channel)
+// =============================================================================
+// Links a ClickUp List to a Slack Channel for bidirectional sync.
+// This is the "Mirror" configuration.
+
+model ProjectMapping {
+  id             String   @id @default(uuid())
+  tenantId       String
+  name           String   // Human-readable project name
+
+  // ClickUp side
+  clickupListId  String   @unique // ClickUp List ID
+  clickupSpaceId String?  // Optional: parent Space ID
+
+  // Slack side
+  slackChannelId String   @unique // Slack Channel ID
+  slackTeamId    String   // Slack Workspace ID
+
+  // Sync configuration
+  syncEnabled    Boolean  @default(true)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  taskMappings TaskMapping[]
+
+  @@index([tenantId])
+  @@map("project_mappings")
+}
+
+// =============================================================================
+// LEVEL 3: TASK MAPPING (ClickUp Task <-> Slack Thread)
+// =============================================================================
+// Links a ClickUp Task to a Slack Thread.
+// Created when a task triggers the "Root Message" in Slack.
+
+model TaskMapping {
+  id               String   @id @default(uuid())
+  projectMappingId String
+
+  // ClickUp side
+  clickupTaskId    String   @unique // ClickUp Task ID
+
+  // Slack side
+  slackChannelId   String   // Channel where the thread lives
+  slackThreadTs    String   // Thread timestamp (the "Root Message")
+
+  // State
+  status           TaskStatus @default(TODO)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  projectMapping ProjectMapping @relation(fields: [projectMappingId], references: [id], onDelete: Cascade)
+
+  @@index([projectMappingId])
+  @@index([slackChannelId, slackThreadTs])
+  @@map("task_mappings")
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED_ON_HUMAN
+  DONE
+}
+
+// =============================================================================
+// AGENT: AI Workers
+// =============================================================================
+// Registered AI agents that can connect to the platform.
+// Each agent authenticates via OAuth2 Client Credentials.
+
+model Agent {
+  id           String      @id @default(uuid())
+  tenantId     String
+
+  // Identity
+  name         String      // e.g., "CodeReviewer", "BugFixer"
+  description  String?     // Role description
+  avatarUrl    String?     // Avatar for Slack messages
+
+  // Authentication (OAuth2 Client Credentials)
+  clientId     String      @unique // Public identifier
+  clientSecret String      // Hashed secret
+
+  // Status
+  isActive     Boolean     @default(true)
+  lastSeenAt   DateTime?   // Last heartbeat
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  // Relations
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  aliases      AgentAlias[] @relation("AgentToAliases")
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@map("agents")
+}
+
+// =============================================================================
+// AGENT ALIAS: Mention Resolution
+// =============================================================================
+// Maps abstract tags like "@AI_Squad" to concrete agent IDs.
+// When someone mentions @AI_Squad in ClickUp, we resolve it to actual agents.
+
+model AgentAlias {
+  id        String   @id @default(uuid())
+  tenantId  String
+
+  alias     String   // e.g., "AI_Squad", "CodeReviewers"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agents    Agent[]  @relation("AgentToAliases")
+
+  @@unique([tenantId, alias])
+  @@map("agent_aliases")
+}

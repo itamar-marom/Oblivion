@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus Architecture</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      color: #e0e0e0;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+      color: #00d9ff;
+      font-size: 2.5rem;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #888;
+      margin-bottom: 30px;
+    }
+
+    .architecture {
+      max-width: 1400px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .layer {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .layer-label {
+      position: absolute;
+      left: 10px;
+      background: rgba(0, 217, 255, 0.1);
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      color: #00d9ff;
+      border: 1px solid rgba(0, 217, 255, 0.3);
+    }
+
+    .layer-wrapper {
+      position: relative;
+      padding: 15px 0;
+      margin-bottom: 10px;
+    }
+
+    .component {
+      background: linear-gradient(145deg, #2a2a4a, #1e1e3a);
+      border-radius: 12px;
+      padding: 20px;
+      min-width: 200px;
+      border: 1px solid #3a3a5a;
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .component:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 40px rgba(0, 217, 255, 0.2);
+      border-color: #00d9ff;
+    }
+
+    .component h3 {
+      color: #fff;
+      margin-bottom: 8px;
+      font-size: 1.1rem;
+    }
+
+    .component p {
+      color: #888;
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
+
+    .component .path {
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.7rem;
+      color: #00d9ff;
+      margin-top: 10px;
+      opacity: 0.7;
+    }
+
+    .component.external {
+      background: linear-gradient(145deg, #2a3a2a, #1e2e1e);
+      border-color: #4a6a4a;
+    }
+
+    .component.external:hover {
+      border-color: #6aff6a;
+      box-shadow: 0 10px 40px rgba(106, 255, 106, 0.2);
+    }
+
+    .component.queue {
+      background: linear-gradient(145deg, #3a2a2a, #2e1e1e);
+      border-color: #6a4a4a;
+    }
+
+    .component.queue:hover {
+      border-color: #ff6a6a;
+      box-shadow: 0 10px 40px rgba(255, 106, 106, 0.2);
+    }
+
+    .component.database {
+      background: linear-gradient(145deg, #2a2a3a, #1e1e2e);
+      border-color: #4a4a6a;
+    }
+
+    .component.database:hover {
+      border-color: #a06aff;
+      box-shadow: 0 10px 40px rgba(160, 106, 255, 0.2);
+    }
+
+    .component.gateway {
+      background: linear-gradient(145deg, #3a3a2a, #2e2e1e);
+      border-color: #6a6a4a;
+    }
+
+    .component.gateway:hover {
+      border-color: #ffff6a;
+      box-shadow: 0 10px 40px rgba(255, 255, 106, 0.2);
+    }
+
+    .component.security {
+      background: linear-gradient(145deg, #2a3a3a, #1e2e2e);
+      border-color: #4a8a8a;
+    }
+
+    .component.security:hover {
+      border-color: #6affff;
+      box-shadow: 0 10px 40px rgba(106, 255, 255, 0.2);
+    }
+
+    .arrow-down {
+      display: flex;
+      justify-content: center;
+      padding: 10px 0;
+    }
+
+    .arrow-down svg {
+      width: 40px;
+      height: 30px;
+      fill: none;
+      stroke: #00d9ff;
+      stroke-width: 2;
+      opacity: 0.5;
+    }
+
+    .flow-section {
+      margin-top: 50px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 16px;
+      padding: 30px;
+      border: 1px solid #3a3a5a;
+    }
+
+    .flow-section h2 {
+      color: #00d9ff;
+      margin-bottom: 20px;
+      font-size: 1.5rem;
+    }
+
+    .flow-diagram {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 15px;
+      padding: 20px 0;
+    }
+
+    .flow-step {
+      background: linear-gradient(145deg, #2a2a4a, #1e1e3a);
+      padding: 15px 20px;
+      border-radius: 8px;
+      border: 1px solid #3a3a5a;
+      text-align: center;
+      min-width: 120px;
+    }
+
+    .flow-step .num {
+      background: #00d9ff;
+      color: #1a1a2e;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 0.8rem;
+      margin-bottom: 8px;
+    }
+
+    .flow-step .label {
+      display: block;
+      font-size: 0.85rem;
+    }
+
+    .flow-arrow {
+      color: #00d9ff;
+      font-size: 1.5rem;
+      opacity: 0.5;
+    }
+
+    .legend {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      margin-top: 30px;
+      flex-wrap: wrap;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+    }
+
+    .legend-color {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+    }
+
+    .legend-color.core { background: linear-gradient(145deg, #2a2a4a, #1e1e3a); border: 1px solid #00d9ff; }
+    .legend-color.external { background: linear-gradient(145deg, #2a3a2a, #1e2e1e); border: 1px solid #6aff6a; }
+    .legend-color.queue { background: linear-gradient(145deg, #3a2a2a, #2e1e1e); border: 1px solid #ff6a6a; }
+    .legend-color.database { background: linear-gradient(145deg, #2a2a3a, #1e1e2e); border: 1px solid #a06aff; }
+    .legend-color.gateway { background: linear-gradient(145deg, #3a3a2a, #2e2e1e); border: 1px solid #ffff6a; }
+    .legend-color.security { background: linear-gradient(145deg, #2a3a3a, #1e2e2e); border: 1px solid #6affff; }
+
+    .modules-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-top: 30px;
+    }
+
+    .module-card {
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid #3a3a5a;
+    }
+
+    .module-card h3 {
+      color: #00d9ff;
+      margin-bottom: 15px;
+      font-size: 1.1rem;
+    }
+
+    .module-card ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .module-card li {
+      padding: 8px 0;
+      border-bottom: 1px solid #2a2a4a;
+      font-size: 0.9rem;
+    }
+
+    .module-card li:last-child {
+      border-bottom: none;
+    }
+
+    .module-card .file {
+      color: #888;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.75rem;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      margin-left: 8px;
+    }
+
+    .status-badge.done {
+      background: rgba(106, 255, 106, 0.2);
+      color: #6aff6a;
+    }
+
+    .status-badge.partial {
+      background: rgba(255, 200, 106, 0.2);
+      color: #ffc86a;
+    }
+  </style>
+</head>
+<body>
+  <h1>Nexus Architecture</h1>
+  <p class="subtitle">Agent Orchestration Hub - System Overview</p>
+
+  <div class="architecture">
+    <!-- External Systems Layer -->
+    <div class="layer-wrapper">
+      <span class="layer-label">External Systems</span>
+      <div class="layer">
+        <div class="component external">
+          <h3>ClickUp</h3>
+          <p>Task management platform. Sends webhooks for task events.</p>
+          <div class="path">taskCreated, taskUpdated, taskCommentPosted</div>
+        </div>
+        <div class="component external">
+          <h3>Slack</h3>
+          <p>Communication platform. Sends events for messages and mentions.</p>
+          <div class="path">message, app_mention</div>
+        </div>
+        <div class="component external">
+          <h3>AI Agents</h3>
+          <p>Autonomous agents that connect via WebSocket to receive tasks.</p>
+          <div class="path">Socket.IO clients</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-down">
+      <svg viewBox="0 0 40 30"><path d="M20 5 L20 20 M10 15 L20 25 L30 15"/></svg>
+    </div>
+
+    <!-- API Layer -->
+    <div class="layer-wrapper">
+      <span class="layer-label">API Layer</span>
+      <div class="layer">
+        <div class="component">
+          <h3>WebhooksController</h3>
+          <p>HTTP endpoints for webhook ingestion. Validates signatures and queues jobs.</p>
+          <div class="path">src/webhooks/webhooks.controller.ts</div>
+        </div>
+        <div class="component security">
+          <h3>WebhookSecurityService</h3>
+          <p>HMAC-SHA256 signature verification for ClickUp & Slack webhooks.</p>
+          <div class="path">src/webhooks/services/webhook-security.service.ts</div>
+        </div>
+        <div class="component">
+          <h3>AuthController</h3>
+          <p>JWT token generation for agent authentication.</p>
+          <div class="path">src/auth/auth.controller.ts</div>
+        </div>
+        <div class="component gateway">
+          <h3>AgentGateway</h3>
+          <p>WebSocket server for real-time agent communication.</p>
+          <div class="path">src/gateway/agent.gateway.ts</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-down">
+      <svg viewBox="0 0 40 30"><path d="M20 5 L20 20 M10 15 L20 25 L30 15"/></svg>
+    </div>
+
+    <!-- Queue Layer -->
+    <div class="layer-wrapper">
+      <span class="layer-label">Queue Layer</span>
+      <div class="layer">
+        <div class="component queue">
+          <h3>BullMQ Queue</h3>
+          <p>webhook-processing queue backed by Redis for async job handling.</p>
+          <div class="path">QUEUE_NAMES.WEBHOOK_PROCESSING</div>
+        </div>
+        <div class="component queue">
+          <h3>Redis</h3>
+          <p>In-memory store for queue jobs and WebSocket adapter.</p>
+          <div class="path">localhost:6379</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-down">
+      <svg viewBox="0 0 40 30"><path d="M20 5 L20 20 M10 15 L20 25 L30 15"/></svg>
+    </div>
+
+    <!-- Processing Layer -->
+    <div class="layer-wrapper">
+      <span class="layer-label">Processing Layer</span>
+      <div class="layer">
+        <div class="component">
+          <h3>WebhookProcessor</h3>
+          <p>Unified processor that routes jobs by prefix (clickup: / slack:).</p>
+          <div class="path">src/webhooks/processors/webhook.processor.ts</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-down">
+      <svg viewBox="0 0 40 30"><path d="M20 5 L20 20 M10 15 L20 25 L30 15"/></svg>
+    </div>
+
+    <!-- Services Layer -->
+    <div class="layer-wrapper">
+      <span class="layer-label">Services Layer</span>
+      <div class="layer">
+        <div class="component">
+          <h3>ClickUpService</h3>
+          <p>ClickUp API client. Fetches tasks, posts comments, parses @mentions.</p>
+          <div class="path">src/integrations/clickup/clickup.service.ts</div>
+        </div>
+        <div class="component">
+          <h3>SlackService</h3>
+          <p>Slack API client. Posts messages, creates threads, formats Block Kit.</p>
+          <div class="path">src/integrations/slack/slack.service.ts</div>
+        </div>
+        <div class="component">
+          <h3>AuthService</h3>
+          <p>JWT token management for agent authentication.</p>
+          <div class="path">src/auth/auth.service.ts</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-down">
+      <svg viewBox="0 0 40 30"><path d="M20 5 L20 20 M10 15 L20 25 L30 15"/></svg>
+    </div>
+
+    <!-- Data Layer -->
+    <div class="layer-wrapper">
+      <span class="layer-label">Data Layer</span>
+      <div class="layer">
+        <div class="component database">
+          <h3>PrismaService</h3>
+          <p>Database ORM for PostgreSQL. Manages all entity persistence.</p>
+          <div class="path">src/prisma/prisma.service.ts</div>
+        </div>
+        <div class="component database">
+          <h3>PostgreSQL</h3>
+          <p>Primary database for tenants, agents, mappings, tasks.</p>
+          <div class="path">prisma/schema.prisma</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Flow Section -->
+  <div class="flow-section">
+    <h2>Data Flow: ClickUp Task Created</h2>
+    <div class="flow-diagram">
+      <div class="flow-step">
+        <span class="num">1</span>
+        <span class="label">ClickUp Webhook</span>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step" style="border-color: #6affff;">
+        <span class="num">2</span>
+        <span class="label">Verify Signature</span>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <span class="num">3</span>
+        <span class="label">Controller</span>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <span class="num">4</span>
+        <span class="label">BullMQ Queue</span>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <span class="num">5</span>
+        <span class="label">Processor</span>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <span class="num">6</span>
+        <span class="label">ClickUp API</span>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <span class="num">7</span>
+        <span class="label">Slack Thread</span>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <span class="num">8</span>
+        <span class="label">Database</span>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-step">
+        <span class="num">9</span>
+        <span class="label">WebSocket Event</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modules Section -->
+  <div class="flow-section">
+    <h2>NestJS Modules</h2>
+    <div class="modules-grid">
+      <div class="module-card">
+        <h3>AppModule <span class="status-badge done">Done</span></h3>
+        <ul>
+          <li>Root module importing all feature modules</li>
+          <li class="file">src/app.module.ts</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <h3>AuthModule <span class="status-badge done">Done</span></h3>
+        <ul>
+          <li>AuthController - POST /auth/token</li>
+          <li>AuthService - JWT generation</li>
+          <li>JwtStrategy - Token validation</li>
+          <li class="file">src/auth/</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <h3>GatewayModule <span class="status-badge done">Done</span></h3>
+        <ul>
+          <li>AgentGateway - WebSocket server</li>
+          <li>Events: heartbeat, agent_ready, status_update</li>
+          <li>Redis adapter for scaling</li>
+          <li class="file">src/gateway/</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <h3>WebhooksModule <span class="status-badge done">Done</span></h3>
+        <ul>
+          <li>WebhooksController - /webhooks/*</li>
+          <li>WebhookProcessor - Unified job handler</li>
+          <li>WebhookSecurityService - HMAC-SHA256 verification</li>
+          <li>DTOs for ClickUp & Slack payloads</li>
+          <li class="file">src/webhooks/</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <h3>IntegrationsModule <span class="status-badge done">Done</span></h3>
+        <ul>
+          <li>ClickUpService - API + @mention parsing</li>
+          <li>SlackService - Block Kit + threads</li>
+          <li>@Global() for cross-module access</li>
+          <li class="file">src/integrations/</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <h3>QueueModule <span class="status-badge done">Done</span></h3>
+        <ul>
+          <li>BullMQ configuration</li>
+          <li>Redis connection</li>
+          <li>Queue: webhook-processing</li>
+          <li class="file">src/queue/</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <h3>PrismaModule <span class="status-badge done">Done</span></h3>
+        <ul>
+          <li>PrismaService - Database client</li>
+          <li>@Global() module</li>
+          <li class="file">src/prisma/</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Database Schema -->
+  <div class="flow-section">
+    <h2>Database Schema</h2>
+    <div class="modules-grid">
+      <div class="module-card">
+        <h3>Tenant</h3>
+        <ul>
+          <li>id, name, slug</li>
+          <li>clickupTeamId, slackTeamId</li>
+          <li>Has many: ProjectMappings, Agents, AgentAliases</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <h3>Agent</h3>
+        <ul>
+          <li>id, clientId, name, isActive</li>
+          <li>lastHeartbeat, connectionCount</li>
+          <li>Belongs to: Tenant</li>
+          <li>Many-to-many: AgentAliases</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <h3>AgentAlias</h3>
+        <ul>
+          <li>id, alias (e.g., "@backend-agent")</li>
+          <li>Belongs to: Tenant</li>
+          <li>Many-to-many: Agents</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <h3>ProjectMapping</h3>
+        <ul>
+          <li>clickupListId ↔ slackChannelId</li>
+          <li>Links ClickUp lists to Slack channels</li>
+          <li>Has many: TaskMappings</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <h3>TaskMapping</h3>
+        <ul>
+          <li>clickupTaskId ↔ slackThreadTs</li>
+          <li>status: TODO, IN_PROGRESS, BLOCKED, DONE</li>
+          <li>Links tasks to Slack threads</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-color core"></div>
+      <span>Core Components</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color external"></div>
+      <span>External Systems</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color queue"></div>
+      <span>Queue/Redis</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color database"></div>
+      <span>Database</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color gateway"></div>
+      <span>WebSocket Gateway</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color security"></div>
+      <span>Security Layer</span>
+    </div>
+  </div>
+
+  <p class="subtitle" style="margin-top: 40px;">
+    Generated: <script>document.write(new Date().toLocaleDateString())</script> |
+    Phase 2.3 Complete (Webhook Security)
+  </p>
+</body>
+</html>
