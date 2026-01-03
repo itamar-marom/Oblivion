@@ -5,6 +5,8 @@ import { WebhookProcessor } from './processors/webhook.processor';
 import { WebhookSecurityService } from './services/webhook-security.service';
 import { QueueModule } from '../queue/queue.module';
 import { GatewayModule } from '../gateway/gateway.module';
+import { ProjectsModule } from '../projects/projects.module';
+import { TasksModule } from '../tasks/tasks.module';
 
 /**
  * Webhooks Module handles incoming webhooks from ClickUp and Slack.
@@ -31,7 +33,13 @@ import { GatewayModule } from '../gateway/gateway.module';
  * 5. Emits WebSocket events to agents
  */
 @Module({
-  imports: [QueueModule, GatewayModule, ConfigModule],
+  imports: [
+    QueueModule,
+    GatewayModule,
+    ConfigModule,
+    ProjectsModule, // For @tag routing lookup
+    TasksModule, // For task creation and broadcasting
+  ],
   controllers: [WebhooksController],
   providers: [WebhookProcessor, WebhookSecurityService],
 })

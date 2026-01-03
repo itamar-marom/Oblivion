@@ -18,6 +18,8 @@ import type {
   AgentReadyPayload,
   StatusUpdatePayload,
   ToolRequestPayload,
+  ClaimTaskPayload,
+  ClaimTaskResultPayload,
 } from './dto/events.dto';
 
 /**
@@ -53,6 +55,15 @@ interface AuthenticatedSocket extends Socket {
  * 3. Connection registered in Redis for cross-pod awareness
  * 4. Agent receives events and responds with heartbeats
  */
+/**
+ * Callback type for handling task claims.
+ * Set by TasksService to avoid circular dependency.
+ */
+type ClaimTaskHandler = (
+  agentId: string,
+  taskId: string,
+) => Promise<ClaimTaskResultPayload>;
+
 @WebSocketGateway({
   namespace: '/agents',
   cors: {
@@ -68,10 +79,20 @@ export class AgentGateway
   @WebSocketServer()
   server: Server;
 
+  private claimTaskHandler: ClaimTaskHandler | null = null;
+
   constructor(
     private jwtService: JwtService,
     private redisService: RedisService,
   ) {}
+
+  /**
+   * Register a handler for task claims.
+   * Called by TasksService during initialization.
+   */
+  setClaimTaskHandler(handler: ClaimTaskHandler) {
+    this.claimTaskHandler = handler;
+  }
 
   /**
    * Called when the gateway initializes.
@@ -234,6 +255,38 @@ export class AgentGateway
       success: false,
       error: 'Tool Gateway not implemented yet',
     });
+  }
+
+  /**
+   * Handle task claim requests from agents.
+   * Agent attempts to claim an available task.
+   */
+  @SubscribeMessage(EventType.CLAIM_TASK)
+  async handleClaimTask(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() data: BaseEvent<ClaimTaskPayload>,
+  ): Promise<ClaimTaskResultPayload> {
+    if (!client.agentId) {
+      return {
+        taskId: data.payload.taskId,
+        success: false,
+        error: 'Not authenticated',
+      };
+    }
+
+    if (!this.claimTaskHandler) {
+      return {
+        taskId: data.payload.taskId,
+        success: false,
+        error: 'Task claiming not available',
+      };
+    }
+
+    console.log(
+      `Claim request from ${client.clientId} for task ${data.payload.taskId}`,
+    );
+
+    return this.claimTaskHandler(client.agentId, data.payload.taskId);
   }
 
   // ==========================================================================

@@ -122,32 +122,73 @@ apps/nexus/
 
 ## Data Flow
 
-### Primary Flow: Task Creation → Agent Action
+### Primary Flow: Task Creation → Agent Claims → Execution
 
 ```
-1. Human creates task in ClickUp with @AI_Squad mention
+1. Human creates task in ClickUp with @project-tag in description
+   Example: "Fix login bug. @auth-refactor please handle."
          ↓
 2. ClickUp sends webhook to Nexus (POST /webhooks/clickup)
          ↓
 3. Nexus enqueues webhook (BullMQ) → returns 200 OK
          ↓
-4. Worker processes webhook, parses @mentions
+4. Worker processes webhook, parses @tag from description
          ↓
-5. Nexus queries project_mappings: clickup_list_id → slack_channel_id
+5. Nexus queries: @tag → Project → Group → Member Agents
          ↓
-6. Nexus posts "Root Message" in Slack channel via API
+6. Nexus posts "Root Message" in Project's Slack channel
+   Status: AVAILABLE, Priority: from ClickUp
          ↓
-7. Nexus stores thread_ts in task_mappings table
+7. Nexus stores task in database with project_id
          ↓
-8. Nexus sends TASK_ASSIGNED event to Agent via WebSocket
+8. Nexus broadcasts TASK_AVAILABLE event to all Group members via WebSocket
          ↓
-9. Agent wakes up, fetches context from Memory Bank (Qdrant RAG)
+9. Agent evaluates task (capability match, current load, priority)
          ↓
-10. Agent processes task, posts updates to Slack thread
+10. Agent sends CLAIM_TASK request to Nexus
          ↓
-11. Nexus detects Agent message, syncs to ClickUp as comment
+11. Nexus validates claim (first-come-first-served)
+    Updates task status to CLAIMED, assigns claimed_by_agent_id
          ↓
-12. Task complete!
+12. Nexus broadcasts TASK_CLAIMED to other agents (so they don't also claim)
+    Updates Slack thread with "Claimed by Agent X"
+         ↓
+13. Agent fetches context from Memory Bank (Qdrant RAG)
+         ↓
+14. Agent works on task, posts updates to Slack thread
+    Can @mention other agents in Group for help
+         ↓
+15. Nexus detects Agent message, syncs to ClickUp as comment
+         ↓
+16. Task complete! Agent marks as DONE
+```
+
+### Agent Collaboration Flow
+
+```
+1. Agent A is working on task, needs help
+         ↓
+2. Agent A posts in Group channel: "@AgentB can you review my approach?"
+         ↓
+3. Agent B receives CONTEXT_UPDATE in Group channel
+         ↓
+4. Agent B responds with guidance
+         ↓
+5. Agent A continues work with input
+```
+
+### Multi-Group Priority Flow
+
+```
+1. Agent X is member of: [Backend Squad, QA Team]
+         ↓
+2. Backend Squad has: Task #1 (Priority: Urgent), Task #2 (Priority: Normal)
+   QA Team has: Task #3 (Priority: High)
+         ↓
+3. Agent X receives all TASK_AVAILABLE events
+         ↓
+4. Agent X claims based on ClickUp priority:
+   #1 (Urgent) > #3 (High) > #2 (Normal)
 ```
 
 ### Bidirectional Sync
@@ -176,28 +217,48 @@ ClickUp comment → Webhook to Nexus → Posts in Slack thread
 
 Oblivion enforces a strict hierarchy for context management:
 
-### Level 1: Workgroup (Tenant)
+### Level 0: Tenant (Organization)
 
-**Definition**: Permanent engineering squad or department
+**Definition**: Top-level organization or company
 
 **Mapping**:
-- **Slack**: Dedicated channel (e.g., `#squad-backend`)
-- **ClickUp**: Space or Folder
 - **Oblivion**: `tenant_id` in database
 
 **Capabilities**:
-- Shared secrets scoped to workgroup
+- Infrastructure secrets scoped at tenant level
 - Isolated resources (databases, agents)
-- Team-level permissions
 
-### Level 2: Project (Context Scope)
+### Level 1: Group (Agent Team)
 
-**Definition**: Temporary initiative with start/end date
+**Definition**: A team of AI Agents with shared capabilities
+
+**Examples**: "Backend Squad", "QA Team", "DevOps Agents"
 
 **Mapping**:
-- **Slack**: Dedicated channel (e.g., `#proj-auth-refactor`)
-- **ClickUp**: Specific List
-- **Lifecycle**: Created when List created, Archived when List marked complete
+- **Slack**: Dedicated channel `#oblivion-{group-slug}` (auto-created)
+- **ClickUp**: None directly - Groups are Oblivion-native
+- **Oblivion**: `group_id` in database
+
+**Characteristics**:
+- Agents **join and leave** Groups dynamically
+- One Agent can belong to **multiple Groups**
+- Group channel used for **team-wide communication** and **agent collaboration**
+
+### Level 2: Project (Work Scope)
+
+**Definition**: A focused initiative within a Group
+
+**Examples**: "Auth Refactor", "API v2", "Mobile App"
+
+**Mapping**:
+- **Slack**: Dedicated channel `#oblivion-{project-slug}` (auto-created)
+- **ClickUp**: `@tag` in task descriptions (e.g., `@auth-refactor`)
+- **Oblivion**: `project_id` with `oblivion_tag` field
+
+**Characteristics**:
+- Projects **belong to exactly one Group**
+- All Agents in the Group can see/claim tasks in the Project
+- Project channel used for **task discussions**
 
 **Isolation**:
 - Agents can **only** RAG search documents/chats linked to this project
@@ -205,21 +266,55 @@ Oblivion enforces a strict hierarchy for context management:
 
 ### Level 3: Task (Unit of Work)
 
-**Definition**: Atomic unit that triggers an agent
+**Definition**: Atomic unit of work that Agents claim and execute
 
 **Mapping**:
 - **Slack**: Thread inside Project Channel
-- **ClickUp**: Unique `task_id`
+- **ClickUp**: Task with `@project-tag` in description
+
+**Routing**:
+- Tasks routed by parsing `@tags` in ClickUp task descriptions
+- Tag → Project → Group → Member Agents
+
+**Claiming**:
+- Tasks are **not auto-assigned**
+- Agents **claim** tasks they want to work on
+- Priority from ClickUp determines order for Agents in multiple Groups
 
 **State Machine**:
 ```
-TODO → IN_PROGRESS → BLOCKED_ON_HUMAN → DONE
+TODO → CLAIMED → IN_PROGRESS → BLOCKED_ON_HUMAN → DONE
 ```
 
 **Thread Structure**:
-- Root message: Posted by Nexus when task created
-- Replies: Agent updates, human responses
+- Root message: Posted by Nexus when task created (status: AVAILABLE)
+- Claim update: Agent claims task (status: CLAIMED)
+- Replies: Agent updates, human responses, agent collaboration
 - Metadata: Links back to ClickUp task
+
+### Visual Hierarchy
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                           TENANT                                     │
+│                                                                      │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                         GROUP                                  │  │
+│  │  "Backend Squad"                                              │  │
+│  │  Slack: #oblivion-backend-squad                               │  │
+│  │                                                               │  │
+│  │  MEMBERS: [Agent A] [Agent B] [Agent C]                       │  │
+│  │                                                               │  │
+│  │  PROJECTS:                                                    │  │
+│  │  ┌─────────────────────────────────────────────────────┐     │  │
+│  │  │ Project: "Auth Refactor"                             │     │  │
+│  │  │ Tag: @auth-refactor                                  │     │  │
+│  │  │ Slack: #oblivion-auth-refactor                       │     │  │
+│  │  │ Tasks: [#1 Claimed:A] [#2 Available] [#3 Claimed:B]  │     │  │
+│  │  └─────────────────────────────────────────────────────┘     │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -437,17 +532,79 @@ TODO → IN_PROGRESS → BLOCKED_ON_HUMAN → DONE
 
 ### PostgreSQL Schema
 
-**Core Tables** (from MASTER.md):
-- `tenants`: Workgroups/Squads
+**Core Tables**:
+- `tenants`: Organizations
+- `groups`: Agent teams with Slack channels
+- `projects`: Work scopes with @tags for ClickUp routing
 - `agents`: Registered AI agents
-- `project_mappings`: ClickUp List ↔ Slack Channel
-- `task_mappings`: ClickUp Task ↔ Slack Thread
-- `agent_aliases`: Agent mention patterns
+- `agent_group_memberships`: Agent ↔ Group (many-to-many)
+- `tasks`: ClickUp Task ↔ Slack Thread mappings
+
+**New Schema**:
+```sql
+-- Groups (Agent Teams)
+CREATE TABLE groups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    slack_channel_id VARCHAR(255),      -- Auto-created: #oblivion-{slug}
+    slack_channel_name VARCHAR(255),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Agent ↔ Group membership (many-to-many)
+CREATE TABLE agent_group_memberships (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id UUID NOT NULL REFERENCES agents(id),
+    group_id UUID NOT NULL REFERENCES groups(id),
+    role VARCHAR(50) DEFAULT 'member',  -- 'lead', 'member'
+    joined_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(agent_id, group_id)
+);
+
+-- Projects (Work Scopes within Groups)
+CREATE TABLE projects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_id UUID NOT NULL REFERENCES groups(id),
+    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(100) NOT NULL,
+    description TEXT,
+    oblivion_tag VARCHAR(100) UNIQUE,   -- @auth-refactor (for ClickUp routing)
+    slack_channel_id VARCHAR(255),       -- Auto-created: #oblivion-{slug}
+    slack_channel_name VARCHAR(255),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Tasks (now linked to Projects)
+CREATE TABLE tasks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id),
+    clickup_task_id VARCHAR(255) NOT NULL,
+    slack_thread_ts VARCHAR(255),
+    slack_channel_id VARCHAR(255),
+    title VARCHAR(500),
+    status VARCHAR(50) DEFAULT 'TODO',  -- TODO, CLAIMED, IN_PROGRESS, BLOCKED, DONE
+    priority INTEGER DEFAULT 3,          -- From ClickUp: 1=Urgent, 4=Low
+    claimed_by_agent_id UUID REFERENCES agents(id),
+    claimed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+```
 
 **Relationships**:
-- Tenant → Projects (1:N)
+- Tenant → Groups (1:N)
+- Group → Projects (1:N)
+- Group ↔ Agents (N:M via agent_group_memberships)
 - Project → Tasks (1:N)
-- Agent → Workgroups (N:M)
+- Task → Agent (claimed_by)
 
 ### Redis Usage
 

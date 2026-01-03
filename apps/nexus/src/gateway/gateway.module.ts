@@ -10,19 +10,19 @@ import { RedisService } from './redis.service';
  * - WebSocket Gateway on /agents namespace
  * - JWT authentication for connections
  * - Redis-backed connection tracking (multi-pod support)
- * - Event types: TASK_ASSIGNED, CONTEXT_UPDATE, WAKE_UP, TOOL_RESULT, HEARTBEAT
+ * - Event types: TASK_AVAILABLE, TASK_CLAIMED, CONTEXT_UPDATE, WAKE_UP, TOOL_RESULT, HEARTBEAT
  *
  * Usage in other modules:
  *   constructor(private gateway: AgentGateway) {}
  *
- *   // Emit task assignment to specific agent
+ *   // Emit task available to specific agent
  *   await this.gateway.emitToAgent(agentId, createEvent(
- *     EventType.TASK_ASSIGNED,
+ *     EventType.TASK_AVAILABLE,
  *     { taskId: '...', ... }
  *   ));
  *
- *   // Emit to all agents in tenant
- *   await this.gateway.emitToTenant(tenantId, event);
+ *   // Emit to all agents in a group
+ *   await this.gateway.emitToGroup(groupId, event);
  */
 @Module({
   imports: [

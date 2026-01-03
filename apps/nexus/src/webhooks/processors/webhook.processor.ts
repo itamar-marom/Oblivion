@@ -4,9 +4,11 @@ import { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../../queue/queue.module';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AgentGateway, createEvent, EventType } from '../../gateway';
-import type { TaskAssignedPayload, ContextUpdatePayload } from '../../gateway/dto/events.dto';
+import type { ContextUpdatePayload } from '../../gateway/dto/events.dto';
 import { ClickUpService } from '../../integrations/clickup/clickup.service';
 import { SlackService } from '../../integrations/slack/slack.service';
+import { ProjectsService } from '../../projects/projects.service';
+import { TasksService } from '../../tasks/tasks.service';
 import { CLICKUP_JOB_TYPES } from '../dto/clickup-webhook.dto';
 import type { ClickUpWebhookJob } from '../dto/clickup-webhook.dto';
 import { SLACK_JOB_TYPES } from '../dto/slack-webhook.dto';
@@ -34,6 +36,8 @@ export class WebhookProcessor extends WorkerHost {
     private gateway: AgentGateway,
     private clickUpService: ClickUpService,
     private slackService: SlackService,
+    private projectsService: ProjectsService,
+    private tasksService: TasksService,
   ) {
     super();
   }
@@ -79,13 +83,11 @@ export class WebhookProcessor extends WorkerHost {
   /**
    * Handle new task creation.
    *
-   * Flow:
+   * Flow (@tag routing):
    * 1. Fetch full task details from ClickUp API
-   * 2. Find project mapping by list_id
-   * 3. Parse @mentions in description to find target agents
-   * 4. Create Slack "Root Message" thread
-   * 5. Store task mapping in database
-   * 6. Emit TASK_ASSIGNED to connected agents
+   * 2. Parse @tag from description (e.g., @auth-refactor)
+   * 3. If @tag found, route via Project → Group → Agents (TASK_AVAILABLE)
+   * 4. If no @tag, log and skip (tasks must use @tag routing)
    */
   private async handleTaskCreated(data: ClickUpWebhookJob): Promise<void> {
     this.logger.log(`Task created: ${data.taskId}`);
@@ -95,84 +97,42 @@ export class WebhookProcessor extends WorkerHost {
 
     if (!task) {
       this.logger.warn(`Could not fetch task ${data.taskId} from ClickUp API`);
-      // Fall back to webhook data if API fails
-    }
-
-    // Get list_id from task or webhook
-    const listId = task?.list?.id || data.listId;
-
-    if (!listId) {
-      this.logger.warn(`No list_id for task ${data.taskId}, skipping`);
       return;
     }
 
-    // Find project mapping by list_id
-    const projectMapping = await this.prisma.projectMapping.findUnique({
-      where: { clickupListId: listId },
-      include: { tenant: true },
-    });
+    // Get description for @tag parsing
+    const description = task.text_content || task.description || '';
 
-    if (!projectMapping) {
-      this.logger.debug(`No project mapping for ClickUp list ${listId}, ignoring`);
+    // Parse @tag from description for project routing
+    const oblivionTag = this.clickUpService.parseOblivionTag(description);
+
+    if (!oblivionTag) {
+      this.logger.debug(`No @tag found in task ${data.taskId}, skipping`);
       return;
     }
 
-    // Parse @mentions from task description
-    const description = task?.text_content || task?.description || '';
-    const mentions = this.clickUpService.parseMentions(description);
-    this.logger.debug(`Found mentions: ${mentions.join(', ') || 'none'}`);
+    this.logger.log(`Found @tag: ${oblivionTag}`);
 
-    // Resolve mentions to agents via aliases
-    let targetAgentIds: string[] = [];
+    // Look up project by tag
+    const projectInfo = await this.projectsService.findByTag(oblivionTag);
 
-    if (mentions.length > 0) {
-      // Find agent aliases that match the mentions
-      const aliases = await this.prisma.agentAlias.findMany({
-        where: {
-          tenantId: projectMapping.tenantId,
-          alias: { in: mentions },
-        },
-        include: {
-          agents: true,
-        },
-      });
-
-      // Collect unique agent IDs from matched aliases
-      const agentIdSet = new Set<string>();
-      for (const alias of aliases) {
-        for (const agent of alias.agents) {
-          if (agent.isActive) {
-            agentIdSet.add(agent.id);
-          }
-        }
-      }
-      targetAgentIds = [...agentIdSet];
-
-      this.logger.debug(
-        `Resolved ${mentions.length} mentions to ${targetAgentIds.length} agents`,
-      );
+    if (!projectInfo) {
+      this.logger.warn(`No project found for @tag "${oblivionTag}"`);
+      return;
     }
 
-    // If no specific agents mentioned, notify all active agents in tenant
-    if (targetAgentIds.length === 0) {
-      const allAgents = await this.prisma.agent.findMany({
-        where: {
-          tenantId: projectMapping.tenantId,
-          isActive: true,
-        },
-        select: { id: true },
-      });
-      targetAgentIds = allAgents.map((a) => a.id);
-      this.logger.debug(`No specific mentions, notifying all ${targetAgentIds.length} agents`);
-    }
+    this.logger.log(
+      `Routing to project "${projectInfo.project.name}" (group: ${projectInfo.group.name})`,
+    );
 
-    // Create Slack "Root Message" thread
-    let slackThreadTs = `placeholder-${Date.now()}`;
+    // Create Slack thread in project's channel (if configured)
+    let slackChannelId: string | undefined;
+    let slackThreadTs: string | undefined;
 
-    if (task) {
+    if (projectInfo.project.slackChannelId) {
       const taskSummary = this.clickUpService.extractTaskSummary(task);
       const slackResult = await this.slackService.postTaskMessage(
-        projectMapping.slackChannelId,
+        projectInfo.project.slackChannelId,
         {
           taskId: data.taskId,
           ...taskSummary,
@@ -180,110 +140,104 @@ export class WebhookProcessor extends WorkerHost {
       );
 
       if (slackResult) {
+        slackChannelId = projectInfo.project.slackChannelId;
         slackThreadTs = slackResult.threadTs;
         this.logger.log(`Slack thread created: ${slackThreadTs}`);
-      } else {
-        this.logger.warn('Failed to create Slack thread, using placeholder');
       }
     }
 
-    // Create/update task mapping in database
-    const taskMapping = await this.prisma.taskMapping.upsert({
-      where: { clickupTaskId: data.taskId },
-      update: {
-        slackThreadTs,
-        updatedAt: new Date(),
-      },
-      create: {
-        projectMappingId: projectMapping.id,
-        clickupTaskId: data.taskId,
-        slackChannelId: projectMapping.slackChannelId,
-        slackThreadTs,
-        status: 'TODO',
-      },
+    // Create task via TasksService (broadcasts TASK_AVAILABLE to group)
+    const result = await this.tasksService.createTask({
+      projectId: projectInfo.project.id,
+      clickupTaskId: data.taskId,
+      title: task.name,
+      description: description,
+      priority: this.clickUpService.mapPriority(task),
     });
+
+    // Update task with Slack thread info if created
+    if (slackChannelId && slackThreadTs) {
+      await this.tasksService.updateSlackThread(
+        result.task.id,
+        slackChannelId,
+        slackThreadTs,
+      );
+    }
 
     this.logger.log(
-      `Task mapping created/updated: ${taskMapping.id} (ClickUp: ${data.taskId} → Slack: ${slackThreadTs})`,
+      `Task ${result.task.id} created via @tag routing, notified ${result.notifiedAgents} agents`,
     );
-
-    // Emit TASK_ASSIGNED to connected agents
-    const payload: TaskAssignedPayload = {
-      taskId: taskMapping.id,
-      projectMappingId: projectMapping.id,
-      clickupTaskId: data.taskId,
-      slackChannelId: projectMapping.slackChannelId,
-      slackThreadTs: taskMapping.slackThreadTs,
-      title: task?.name || `Task ${data.taskId}`,
-      description: task?.text_content || task?.description,
-      assignedAt: new Date().toISOString(),
-    };
-
-    const event = createEvent(EventType.TASK_ASSIGNED, payload);
-
-    // Fetch full agent records for logging
-    const agents = await this.prisma.agent.findMany({
-      where: { id: { in: targetAgentIds } },
-    });
-
-    for (const agent of agents) {
-      const sent = await this.gateway.emitToAgent(agent.id, event);
-      if (sent) {
-        this.logger.log(`TASK_ASSIGNED sent to agent ${agent.clientId}`);
-      }
-    }
   }
 
   /**
    * Handle task updates (status changes, etc.).
+   *
+   * Parses history_items from the webhook payload to detect changes,
+   * then syncs status to the Task model.
    */
   private async handleTaskUpdated(data: ClickUpWebhookJob): Promise<void> {
     this.logger.log(`Task updated: ${data.taskId}`);
 
-    // Find existing task mapping
-    const taskMapping = await this.prisma.taskMapping.findUnique({
-      where: { clickupTaskId: data.taskId },
-      include: {
-        projectMapping: {
-          include: { tenant: true },
-        },
-      },
-    });
+    // Parse history_items to find what changed
+    const historyItems = data.raw.history_items || [];
+    const statusChange = historyItems.find(
+      (item: { field?: string }) => item.field === 'status',
+    );
 
-    if (!taskMapping) {
-      this.logger.debug(`No task mapping for ClickUp task ${data.taskId}, ignoring`);
+    // Fetch updated task from ClickUp for current status
+    const task = await this.clickUpService.getTask(data.taskId);
+
+    if (!task) {
+      this.logger.warn(`Could not fetch task ${data.taskId} from ClickUp API`);
       return;
     }
 
-    // Fetch updated task from ClickUp
-    const task = await this.clickUpService.getTask(data.taskId);
+    const clickupStatus = task.status.status;
 
-    if (task) {
-      // Update status in database based on ClickUp status
-      const clickupStatus = task.status.status.toUpperCase();
-      let dbStatus: 'TODO' | 'IN_PROGRESS' | 'BLOCKED_ON_HUMAN' | 'DONE' = 'TODO';
+    // Log status change details if available
+    if (statusChange) {
+      const beforeStatus = (statusChange.before as { status?: string })?.status || 'unknown';
+      const afterStatus = (statusChange.after as { status?: string })?.status || clickupStatus;
+      this.logger.log(`Status change detected: "${beforeStatus}" → "${afterStatus}"`);
+    }
 
-      if (clickupStatus.includes('PROGRESS') || clickupStatus.includes('REVIEW')) {
-        dbStatus = 'IN_PROGRESS';
-      } else if (clickupStatus.includes('DONE') || clickupStatus.includes('COMPLETE')) {
-        dbStatus = 'DONE';
-      } else if (clickupStatus.includes('BLOCK')) {
-        dbStatus = 'BLOCKED_ON_HUMAN';
-      }
+    // Sync status via TasksService
+    const taskResult = await this.tasksService.syncStatusFromClickUp(data.taskId, clickupStatus);
 
-      if (taskMapping.status !== dbStatus) {
-        await this.prisma.taskMapping.update({
-          where: { id: taskMapping.id },
-          data: { status: dbStatus },
-        });
-        this.logger.log(`Task ${data.taskId} status updated to ${dbStatus}`);
-      }
+    if (!taskResult) {
+      this.logger.debug(`No task found for ClickUp task ${data.taskId}, ignoring`);
+      return;
+    }
 
-      // Post status update to Slack thread
+    const { task: taskInfo, agents } = taskResult;
+
+    // Post status update to Slack thread
+    if (taskInfo.slackChannelId && taskInfo.slackThreadTs) {
       await this.slackService.postThreadReply(
-        taskMapping.slackChannelId,
-        taskMapping.slackThreadTs,
-        `📊 *Status updated:* ${task.status.status}`,
+        taskInfo.slackChannelId,
+        taskInfo.slackThreadTs,
+        `📊 *Status updated:* ${clickupStatus}`,
+      );
+    }
+
+    // Emit CONTEXT_UPDATE to group members if status changed
+    if (taskInfo.status !== taskInfo.previousStatus) {
+      const event = createEvent(EventType.CONTEXT_UPDATE, {
+        taskId: taskInfo.id,
+        slackChannelId: taskInfo.slackChannelId || '',
+        slackThreadTs: taskInfo.slackThreadTs || '',
+        messageTs: new Date().toISOString(),
+        author: 'ClickUp',
+        content: `Status changed from ${taskInfo.previousStatus} to ${taskInfo.status}`,
+        isHuman: true, // External system update
+      });
+
+      for (const agent of agents) {
+        await this.gateway.emitToAgent(agent.id, event);
+      }
+
+      this.logger.log(
+        `CONTEXT_UPDATE sent to ${agents.length} agents for status change on task ${taskInfo.id}`,
       );
     }
 
@@ -296,18 +250,26 @@ export class WebhookProcessor extends WorkerHost {
   private async handleTaskComment(data: ClickUpWebhookJob): Promise<void> {
     this.logger.log(`Task comment: ${data.taskId}`);
 
-    // Find existing task mapping
-    const taskMapping = await this.prisma.taskMapping.findUnique({
+    // Find task by ClickUp ID
+    const task = await this.prisma.task.findUnique({
       where: { clickupTaskId: data.taskId },
       include: {
-        projectMapping: {
-          include: { tenant: true },
+        project: {
+          include: {
+            group: {
+              include: {
+                members: {
+                  include: { agent: true },
+                },
+              },
+            },
+          },
         },
       },
     });
 
-    if (!taskMapping) {
-      this.logger.debug(`No task mapping for ClickUp task ${data.taskId}, ignoring comment`);
+    if (!task) {
+      this.logger.debug(`No task found for ClickUp task ${data.taskId}, ignoring comment`);
       return;
     }
 
@@ -322,27 +284,25 @@ export class WebhookProcessor extends WorkerHost {
       const content = commentItem.comment.text_content || commentItem.comment.comment_text || '';
 
       // Post comment to Slack thread
-      const formattedComment = this.slackService.formatCommentForSlack(author, content);
-      await this.slackService.postThreadReply(
-        taskMapping.slackChannelId,
-        taskMapping.slackThreadTs,
-        formattedComment,
-      );
+      if (task.slackChannelId && task.slackThreadTs) {
+        const formattedComment = this.slackService.formatCommentForSlack(author, content);
+        await this.slackService.postThreadReply(
+          task.slackChannelId,
+          task.slackThreadTs,
+          formattedComment,
+        );
+        this.logger.log(`Comment synced to Slack thread ${task.slackThreadTs}`);
+      }
 
-      this.logger.log(`Comment synced to Slack thread ${taskMapping.slackThreadTs}`);
-
-      // Emit CONTEXT_UPDATE to agents
-      const agents = await this.prisma.agent.findMany({
-        where: {
-          tenantId: taskMapping.projectMapping.tenantId,
-          isActive: true,
-        },
-      });
+      // Emit CONTEXT_UPDATE to group agents
+      const agents = task.project.group.members
+        .map((m) => m.agent)
+        .filter((a) => a.isActive);
 
       const event = createEvent(EventType.CONTEXT_UPDATE, {
-        taskId: taskMapping.id,
-        slackChannelId: taskMapping.slackChannelId,
-        slackThreadTs: taskMapping.slackThreadTs,
+        taskId: task.id,
+        slackChannelId: task.slackChannelId || '',
+        slackThreadTs: task.slackThreadTs || '',
         messageTs: new Date().toISOString(),
         author,
         content,
@@ -394,20 +354,28 @@ export class WebhookProcessor extends WorkerHost {
       return;
     }
 
-    // Find task mapping by Slack thread
-    const taskMapping = await this.prisma.taskMapping.findFirst({
+    // Find task by Slack thread
+    const task = await this.prisma.task.findFirst({
       where: {
         slackChannelId: data.channelId,
         slackThreadTs: data.threadTs,
       },
       include: {
-        projectMapping: {
-          include: { tenant: true },
+        project: {
+          include: {
+            group: {
+              include: {
+                members: {
+                  include: { agent: true },
+                },
+              },
+            },
+          },
         },
       },
     });
 
-    if (!taskMapping) {
+    if (!task) {
       this.logger.debug(`Thread ${data.threadTs} not tracked, ignoring`);
       return;
     }
@@ -420,25 +388,22 @@ export class WebhookProcessor extends WorkerHost {
     if (this.clickUpService.isConfigured()) {
       const commentText = `[Slack - ${author}] ${content}`;
       const result = await this.clickUpService.postComment(
-        taskMapping.clickupTaskId,
+        task.clickupTaskId,
         commentText,
       );
 
       if (result) {
-        this.logger.log(`Message synced to ClickUp task ${taskMapping.clickupTaskId}`);
+        this.logger.log(`Message synced to ClickUp task ${task.clickupTaskId}`);
       }
     }
 
-    // Emit CONTEXT_UPDATE to agents
-    const agents = await this.prisma.agent.findMany({
-      where: {
-        tenantId: taskMapping.projectMapping.tenantId,
-        isActive: true,
-      },
-    });
+    // Emit CONTEXT_UPDATE to group agents
+    const agents = task.project.group.members
+      .map((m) => m.agent)
+      .filter((a) => a.isActive);
 
     const payload: ContextUpdatePayload = {
-      taskId: taskMapping.id,
+      taskId: task.id,
       slackChannelId: data.channelId,
       slackThreadTs: data.threadTs!,
       messageTs: data.messageTs,
@@ -462,34 +427,39 @@ export class WebhookProcessor extends WorkerHost {
   private async handleSlackAppMention(data: SlackWebhookJob): Promise<void> {
     this.logger.log(`Bot mentioned in channel ${data.channelId}`);
 
-    // Find task mapping if in a tracked thread
+    // Find task if in a tracked thread
     if (data.threadTs) {
-      const taskMapping = await this.prisma.taskMapping.findFirst({
+      const task = await this.prisma.task.findFirst({
         where: {
           slackChannelId: data.channelId,
           slackThreadTs: data.threadTs,
         },
         include: {
-          projectMapping: {
-            include: { tenant: true },
+          project: {
+            include: {
+              group: {
+                include: {
+                  members: {
+                    include: { agent: true },
+                  },
+                },
+              },
+            },
           },
         },
       });
 
-      if (taskMapping) {
-        // Emit WAKE_UP event to agents
-        const agents = await this.prisma.agent.findMany({
-          where: {
-            tenantId: taskMapping.projectMapping.tenantId,
-            isActive: true,
-          },
-        });
+      if (task) {
+        // Emit WAKE_UP event to group agents
+        const agents = task.project.group.members
+          .map((m) => m.agent)
+          .filter((a) => a.isActive);
 
         const event = createEvent(EventType.WAKE_UP, {
-          taskId: taskMapping.id,
+          taskId: task.id,
           slackChannelId: data.channelId,
           slackThreadTs: data.threadTs,
-          reason: 'Bot mentioned in thread',
+          reason: 'mention',
           triggeredBy: data.userId || 'Unknown',
         });
 

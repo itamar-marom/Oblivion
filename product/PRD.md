@@ -38,12 +38,13 @@ The platform operates on a **Distributed Hub-and-Spoke** model, designed for Kub
 4.  **The Agent Protocol:** A standardized WebSocket interface that allows *any* Python/LangGraph agent to connect, receive work, and stream "Thoughts" back to the Nexus.
 
 ### 2.2 Data Flow Description
-1.  **Trigger:** Human creates a task in ClickUp.
+1.  **Trigger:** Human creates a task in ClickUp with `@project-tag` in description.
 2.  **Ingress:** ClickUp sends a Webhook to Oblivion Nexus.
-3.  **Routing:** Nexus looks up the Project Mapping (Postgres) to find the corresponding Slack Channel.
-4.  **Dispatch:** Nexus sends a WebSocket event (`TASK_ASSIGNED`) to the assigned Agent.
-5.  **Action:** Agent accepts the task, connects to the Slack Channel, and begins work.
-6.  **Feedback:** Nexus detects the Agent's Slack message and mirrors it back to the ClickUp task as a comment.
+3.  **Routing:** Nexus parses the `@tag` → finds Project → finds Group → identifies member Agents.
+4.  **Notification:** Nexus posts task to Project's Slack channel and broadcasts `TASK_AVAILABLE` to Group members.
+5.  **Claiming:** An Agent **claims** the task (first-come-first-served or by priority/capability matching).
+6.  **Execution:** Agent works on task, posts updates to Slack thread, collaborates with other agents if needed.
+7.  **Feedback:** Nexus detects Agent's Slack message and mirrors it back to the ClickUp task as a comment.
 
 ---
 
@@ -51,30 +52,78 @@ The platform operates on a **Distributed Hub-and-Spoke** model, designed for Kub
 
 To manage complexity, we enforce a strict hierarchy of context.
 
-### 3.1 Level 1: The Workgroup (Tenant)
-- **Definition:** Represents a permanent engineering squad or department.
+### 3.1 Level 0: The Tenant (Organization)
+- **Definition:** The top-level organization or company.
 - **Mapping:**
-    - **Slack:** A dedicated channel `#squad-backend` (Permanent).
-    - **ClickUp:** A specific `Space` or `Folder`.
     - **Oblivion:** `TenantID`.
 - **Capabilities:** Infrastructure secrets (e.g., AWS Keys) are scoped here via Kubernetes Secrets.
 
-### 3.2 Level 2: The Project (Context Scope)
-- **Definition:** A temporary initiative with a start and end date.
+### 3.2 Level 1: The Group (Agent Team)
+- **Definition:** A permanent team of AI Agents with shared capabilities.
+- **Examples:** "Backend Squad", "QA Team", "DevOps Agents"
 - **Mapping:**
-    - **Slack:** A dedicated channel `#proj-auth-refactor` (Ephemeral).
-    - **ClickUp:** A specific `List`.
-    - **Lifecycle:**
-        - **Created:** When ClickUp List is created.
-        - **Archived:** When ClickUp List is marked "Complete".
-- **Isolation:** Agents in this project can *only* RAG search documents/chats linked to this project.
+    - **Slack:** A dedicated channel `#oblivion-backend-squad` (Permanent, auto-created).
+    - **Oblivion:** `GroupID`.
+- **Characteristics:**
+    - Agents **join and leave** groups dynamically.
+    - One agent can belong to **multiple groups**.
+    - Group channel used for **team-wide announcements** and **agent-to-agent communication**.
+    - Agents in the same group can collaborate on tasks.
 
-### 3.3 Level 3: The Task (Unit of Work)
-- **Definition:** The atomic unit that triggers an Agent.
+### 3.3 Level 2: The Project (Work Scope)
+- **Definition:** A focused initiative within a Group.
+- **Examples:** "Auth Refactor", "API v2", "Mobile App"
+- **Mapping:**
+    - **Slack:** A dedicated channel `#oblivion-auth-refactor` (Auto-created when project created).
+    - **ClickUp:** An `@tag` (e.g., `@auth-refactor`) used in task descriptions.
+    - **Oblivion:** `ProjectID` with `oblivion_tag` field.
+- **Characteristics:**
+    - Projects **belong to exactly one Group**.
+    - All agents in the Group can see/claim tasks in the project.
+    - Project channel used for **task discussions** and **work updates**.
+- **Isolation:** Agents can *only* RAG search documents/chats linked to this project.
+
+### 3.4 Level 3: The Task (Unit of Work)
+- **Definition:** The atomic unit of work that Agents claim and execute.
 - **Mapping:**
     - **Slack:** A **Thread** inside the Project Channel.
-    - **ClickUp:** A unique `TaskID`.
-- **State Machine:** `TODO` -> `IN_PROGRESS` -> `BLOCKED_ON_HUMAN` -> `DONE`.
+    - **ClickUp:** A unique `TaskID` with `@project-tag` in description.
+- **Routing:** Tasks are routed by parsing `@tags` in ClickUp task descriptions.
+- **Claiming:** Tasks are **not auto-assigned**. Agents **claim** tasks they want to work on.
+- **Priority:** ClickUp priority determines order when an Agent is in multiple groups.
+- **State Machine:** `TODO` -> `CLAIMED` -> `IN_PROGRESS` -> `BLOCKED_ON_HUMAN` -> `DONE`.
+
+### 3.5 Visual Hierarchy
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                           TENANT                                     │
+│  (Organization)                                                      │
+│                                                                      │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                         GROUP                                  │  │
+│  │  "Backend Squad"                                              │  │
+│  │  Slack: #oblivion-backend-squad                               │  │
+│  │                                                               │  │
+│  │  MEMBERS:                                                     │  │
+│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐                       │  │
+│  │  │ Agent A │  │ Agent B │  │ Agent C │                       │  │
+│  │  └─────────┘  └─────────┘  └─────────┘                       │  │
+│  │                                                               │  │
+│  │  PROJECTS:                                                    │  │
+│  │  ┌─────────────────────────────────────────────────────┐     │  │
+│  │  │ Project: "Auth Refactor"                             │     │  │
+│  │  │ Slack: #oblivion-auth-refactor                       │     │  │
+│  │  │ ClickUp Tag: @auth-refactor                          │     │  │
+│  │  │                                                      │     │  │
+│  │  │ TASKS:                                               │     │  │
+│  │  │ ├── Task #1 (Claimed by Agent A) ──► Slack Thread   │     │  │
+│  │  │ ├── Task #2 (Unclaimed) ──► Slack Thread            │     │  │
+│  │  │ └── Task #3 (Claimed by Agent B) ──► Slack Thread   │     │  │
+│  │  └─────────────────────────────────────────────────────┘     │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -90,23 +139,46 @@ To manage complexity, we enforce a strict hierarchy of context.
 ### 4.2 Integration Logic (The "Mirror")
 - **FR-004 (Task Creation Trigger):**
     - **Input:** ClickUp Webhook (`taskCreated`).
-    - **Process:** Parse description for `@mentions` (e.g., `@AI_Squad`).
-    - **Output:** Post a "Root Message" in the mapped Slack Project Channel.
-- **FR-005 (Bi-Directional Sync):**
+    - **Process:** Parse description for `@project-tag` or `@group-tag` (e.g., `@auth-refactor`, `@backend-squad`).
+    - **Routing:** Tag → Project → Group → Slack Channel.
+    - **Output:** Post a "Root Message" in the Project's Slack Channel.
+- **FR-005 (Task Claiming):**
+    - **Broadcast:** When task is posted, all agents in the Group receive `TASK_AVAILABLE` event.
+    - **Claim:** First agent to respond with `CLAIM_TASK` owns it.
+    - **Priority:** If agent is in multiple groups, ClickUp priority determines task order.
+    - **Conflict Resolution:** If two agents claim simultaneously, Nexus arbitrates (first received wins).
+- **FR-006 (Bi-Directional Sync):**
     - **Slack -> ClickUp:** If an Agent posts a message in Slack with `metadata: { type: "FINAL_REPORT" }`, Oblivion must post that content as a Comment on the ClickUp task.
     - **ClickUp -> Slack:** If a Human comments on the ClickUp task, Oblivion must post it into the Slack Thread to notify the Agent.
+- **FR-007 (Agent Communication):**
+    - **Group Channel:** Agents post team-wide updates, can @mention other agents for help.
+    - **Project Channel:** Task-specific discussions happen in threads.
+    - **Collaboration:** Agents can request assistance from other Group members via the Group channel.
 
 ### 4.3 The "Subvocal" Protocol (UX)
-- **FR-006 (Thought Separation):** Agents must support two output streams:
+- **FR-008 (Thought Separation):** Agents must support two output streams:
     1.  **Public:** User-facing status updates (Markdown).
     2.  **Private:** Internal chain-of-thought logs (JSON) sent to **Langfuse** (for tracing) and the **Nexus Debug Stream** (for the Dashboard).
-- **FR-007 (UI Rendering):** The Slack integration must use Block Kit to render "Private" thoughts as collapsed/hidden accordions or strictly in a separate "Debug Thread".
+- **FR-009 (UI Rendering):** The Slack integration must use Block Kit to render "Private" thoughts as collapsed/hidden accordions or strictly in a separate "Debug Thread".
 
 ### 4.4 Memory & RAG
-- **FR-008 (Paged Memory):** The system must implement a "Tiered Memory" strategy:
+- **FR-010 (Paged Memory):** The system must implement a "Tiered Memory" strategy:
     - **Tier 1 (Context):** The immediate Slack Thread (Raw text).
     - **Tier 2 (Vector):** Qdrant storage for semantic search of *past* threads and docs.
-- **FR-009 (Auto-Summarization):** A background job runs every 50 messages to generate a comprehensive summary of the thread, stored in Postgres/Qdrant to prevent context window overflow.
+- **FR-011 (Auto-Summarization):** A background job runs every 50 messages to generate a comprehensive summary of the thread, stored in Postgres/Qdrant to prevent context window overflow.
+
+### 4.5 Group & Project Management
+- **FR-012 (Group Creation):**
+    - When a Group is created in Observer, Nexus **auto-creates** the corresponding Slack channel.
+    - Channel naming convention: `#oblivion-{group-slug}`.
+- **FR-013 (Project Creation):**
+    - When a Project is created under a Group, Nexus **auto-creates** the corresponding Slack channel.
+    - Channel naming convention: `#oblivion-{project-slug}`.
+    - Project must have a unique `oblivion_tag` for ClickUp routing.
+- **FR-014 (Agent Membership):**
+    - Agents can join/leave Groups via Observer UI or API.
+    - When an Agent joins a Group, they're automatically added to the Group's Slack channel.
+    - Agents in a Group can see all Projects under that Group.
 
 ---
 

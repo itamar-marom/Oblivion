@@ -1,5 +1,12 @@
 // Oblivion Database Schema
-// Reference: product/PRD.md - Section 3 (Container System)
+// Reference: product/PRD.md - Section 3 (Hierarchy & Data Model)
+//
+// Hierarchy:
+//   Tenant (Organization)
+//     └── Group (Agent Team) - has Slack channel
+//           ├── AgentGroupMembership (many-to-many)
+//           └── Project (Work Scope) - has Slack channel, @tag routing
+//                 └── Task (Unit of Work) - Slack thread, claimed by agent
 
 generator client {
   provider = "prisma-client-js"
@@ -10,92 +17,162 @@ datasource db {
 }
 
 // =============================================================================
-// LEVEL 1: TENANT (Workgroup/Squad)
+// LEVEL 0: TENANT (Organization)
 // =============================================================================
-// Represents a permanent engineering squad or department.
-// All data is isolated at the tenant level (multi-tenancy).
+// Top-level organization. All data is isolated at the tenant level (multi-tenancy).
 
 model Tenant {
   id        String   @id @default(uuid())
-  name      String   // e.g., "Backend Squad", "Platform Team"
+  name      String   // e.g., "Acme Corp", "Startup Inc"
   slug      String   @unique // URL-friendly identifier
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  agents          Agent[]
-  projectMappings ProjectMapping[]
-  agentAliases    AgentAlias[]
+  agents   Agent[]
+  groups   Group[]
+  projects Project[]
 
   @@map("tenants")
 }
 
 // =============================================================================
-// LEVEL 2: PROJECT MAPPING (ClickUp List <-> Slack Channel)
+// LEVEL 1: GROUP (Agent Team)
 // =============================================================================
-// Links a ClickUp List to a Slack Channel for bidirectional sync.
-// This is the "Mirror" configuration.
+// A permanent team of AI Agents with shared capabilities.
+// Each Group has a dedicated Slack channel for team communication.
+// Agents can join/leave multiple Groups dynamically.
 
-model ProjectMapping {
-  id             String   @id @default(uuid())
-  tenantId       String
-  name           String   // Human-readable project name
+model Group {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String   // e.g., "Backend Squad", "QA Team"
+  slug        String   // URL-friendly identifier (unique per tenant)
+  description String?
 
-  // ClickUp side
-  clickupListId  String   @unique // ClickUp List ID
-  clickupSpaceId String?  // Optional: parent Space ID
+  // Slack integration (auto-created when group is created)
+  slackChannelId   String? // Slack Channel ID
+  slackChannelName String? // e.g., "#oblivion-backend-squad"
 
-  // Slack side
-  slackChannelId String   @unique // Slack Channel ID
-  slackTeamId    String   // Slack Workspace ID
-
-  // Sync configuration
-  syncEnabled    Boolean  @default(true)
-
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  taskMappings TaskMapping[]
+  tenant     Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members    AgentGroupMembership[]
+  projects   Project[]
 
+  @@unique([tenantId, slug])
   @@index([tenantId])
-  @@map("project_mappings")
+  @@map("groups")
 }
 
 // =============================================================================
-// LEVEL 3: TASK MAPPING (ClickUp Task <-> Slack Thread)
+// AGENT <-> GROUP MEMBERSHIP (Many-to-Many)
 // =============================================================================
-// Links a ClickUp Task to a Slack Thread.
-// Created when a task triggers the "Root Message" in Slack.
+// Tracks which agents belong to which groups.
+// An agent can be in multiple groups; a group can have multiple agents.
 
-model TaskMapping {
-  id               String   @id @default(uuid())
-  projectMappingId String
-
-  // ClickUp side
-  clickupTaskId    String   @unique // ClickUp Task ID
-
-  // Slack side
-  slackChannelId   String   // Channel where the thread lives
-  slackThreadTs    String   // Thread timestamp (the "Root Message")
-
-  // State
-  status           TaskStatus @default(TODO)
-
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+model AgentGroupMembership {
+  id       String   @id @default(uuid())
+  agentId  String
+  groupId  String
+  role     String   @default("member") // "member", "lead"
+  joinedAt DateTime @default(now())
 
   // Relations
-  projectMapping ProjectMapping @relation(fields: [projectMappingId], references: [id], onDelete: Cascade)
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
-  @@index([projectMappingId])
+  @@unique([agentId, groupId])
+  @@index([agentId])
+  @@index([groupId])
+  @@map("agent_group_memberships")
+}
+
+// =============================================================================
+// LEVEL 2: PROJECT (Work Scope)
+// =============================================================================
+// A focused initiative within a Group.
+// Each Project has a dedicated Slack channel and a unique @tag for ClickUp routing.
+// Tasks are routed to Projects by parsing @tags in ClickUp task descriptions.
+
+model Project {
+  id          String   @id @default(uuid())
+  groupId     String
+  tenantId    String   // Denormalized for query efficiency
+  name        String   // e.g., "Auth Refactor", "API v2"
+  slug        String   // URL-friendly identifier
+  description String?
+
+  // ClickUp routing - the @tag used in task descriptions
+  oblivionTag String?  @unique // e.g., "auth-refactor" (without @)
+
+  // Slack integration (auto-created when project is created)
+  slackChannelId   String? // Slack Channel ID
+  slackChannelName String? // e.g., "#oblivion-auth-refactor"
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  group  Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tasks  Task[]
+
+  @@unique([groupId, slug])
+  @@index([tenantId])
+  @@index([groupId])
+  @@index([oblivionTag])
+  @@map("projects")
+}
+
+// =============================================================================
+// LEVEL 3: TASK (Unit of Work)
+// =============================================================================
+// The atomic unit of work that Agents claim and execute.
+// Each Task is linked to a ClickUp task and a Slack thread.
+// Agents CLAIM tasks (not auto-assigned).
+
+model Task {
+  id        String @id @default(uuid())
+  projectId String
+
+  // ClickUp side
+  clickupTaskId String  @unique // ClickUp Task ID
+  title         String? // Task title from ClickUp
+
+  // Slack side (thread in project channel)
+  slackChannelId String? // Channel where the thread lives
+  slackThreadTs  String? // Thread timestamp (the "Root Message")
+
+  // Task state
+  status   TaskStatus @default(TODO)
+  priority Int        @default(3) // 1=Urgent, 2=High, 3=Normal, 4=Low
+
+  // Claiming
+  claimedByAgentId String?   // Agent who claimed this task
+  claimedAt        DateTime? // When the task was claimed
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  claimedByAgent Agent?  @relation("ClaimedTasks", fields: [claimedByAgentId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([claimedByAgentId])
+  @@index([status])
   @@index([slackChannelId, slackThreadTs])
-  @@map("task_mappings")
+  @@map("tasks")
 }
 
 enum TaskStatus {
   TODO
+  CLAIMED      // Agent has claimed but not started
   IN_PROGRESS
   BLOCKED_ON_HUMAN
   DONE
@@ -106,55 +183,37 @@ enum TaskStatus {
 // =============================================================================
 // Registered AI agents that can connect to the platform.
 // Each agent authenticates via OAuth2 Client Credentials.
+// Agents can join multiple Groups and claim Tasks.
 
 model Agent {
-  id           String      @id @default(uuid())
+  id           String   @id @default(uuid())
   tenantId     String
 
   // Identity
-  name         String      // e.g., "CodeReviewer", "BugFixer"
-  description  String?     // Role description
-  avatarUrl    String?     // Avatar for Slack messages
+  name         String   // e.g., "CodeReviewer", "BugFixer"
+  description  String?  // Role description
+  avatarUrl    String?  // Avatar for Slack messages
+
+  // Capabilities (for smart task routing)
+  capabilities String[] @default([]) // e.g., ["python", "testing", "devops"]
 
   // Authentication (OAuth2 Client Credentials)
-  clientId     String      @unique // Public identifier
-  clientSecret String      // Hashed secret
+  clientId     String   @unique // Public identifier
+  clientSecret String   // Hashed secret
 
   // Status
-  isActive     Boolean     @default(true)
-  lastSeenAt   DateTime?   // Last heartbeat
-
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  // Relations
-  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  aliases      AgentAlias[] @relation("AgentToAliases")
-
-  @@index([tenantId])
-  @@index([clientId])
-  @@map("agents")
-}
-
-// =============================================================================
-// AGENT ALIAS: Mention Resolution
-// =============================================================================
-// Maps abstract tags like "@AI_Squad" to concrete agent IDs.
-// When someone mentions @AI_Squad in ClickUp, we resolve it to actual agents.
-
-model AgentAlias {
-  id        String   @id @default(uuid())
-  tenantId  String
-
-  alias     String   // e.g., "AI_Squad", "CodeReviewers"
+  isActive   Boolean   @default(true)
+  lastSeenAt DateTime? // Last heartbeat
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  agents    Agent[]  @relation("AgentToAliases")
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  groupMemberships AgentGroupMembership[] // Groups this agent belongs to
+  claimedTasks     Task[]                 @relation("ClaimedTasks") // Tasks claimed by this agent
 
-  @@unique([tenantId, alias])
-  @@map("agent_aliases")
+  @@index([tenantId])
+  @@index([clientId])
+  @@map("agents")
 }

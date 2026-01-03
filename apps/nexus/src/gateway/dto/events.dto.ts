@@ -11,7 +11,8 @@
  */
 export enum EventType {
   // Server → Agent
-  TASK_ASSIGNED = 'task_assigned',
+  TASK_AVAILABLE = 'task_available', // New task available for claiming
+  TASK_CLAIMED = 'task_claimed', // Task was claimed by another agent
   CONTEXT_UPDATE = 'context_update',
   WAKE_UP = 'wake_up',
   TOOL_RESULT = 'tool_result',
@@ -23,6 +24,7 @@ export enum EventType {
   AGENT_READY = 'agent_ready',
   TOOL_REQUEST = 'tool_request',
   STATUS_UPDATE = 'status_update',
+  CLAIM_TASK = 'claim_task', // Agent requests to claim a task
 }
 
 /**
@@ -32,20 +34,6 @@ export interface BaseEvent<T = unknown> {
   type: EventType;
   payload: T;
   timestamp: string; // ISO 8601
-}
-
-/**
- * TASK_ASSIGNED: New task from ClickUp assigned to agent.
- */
-export interface TaskAssignedPayload {
-  taskId: string;
-  projectMappingId: string;
-  clickupTaskId: string;
-  slackChannelId: string;
-  slackThreadTs: string;
-  title: string;
-  description?: string;
-  assignedAt: string;
 }
 
 /**
@@ -114,6 +102,58 @@ export interface StatusUpdatePayload {
   status: 'idle' | 'working' | 'error';
   taskId?: string;
   message?: string;
+}
+
+// =============================================================================
+// TASK CLAIMING EVENTS (Phase 2.5)
+// =============================================================================
+
+/**
+ * TASK_AVAILABLE: New task is available for claiming.
+ * Sent to all agents in the project's group.
+ */
+export interface TaskAvailablePayload {
+  taskId: string;
+  projectId: string;
+  projectName: string;
+  groupId: string;
+  groupName: string;
+  clickupTaskId: string;
+  slackChannelId?: string;
+  slackThreadTs?: string;
+  title: string;
+  description?: string;
+  priority: number; // 1=Urgent, 2=High, 3=Normal, 4=Low
+  createdAt: string;
+}
+
+/**
+ * CLAIM_TASK: Agent requests to claim a task.
+ */
+export interface ClaimTaskPayload {
+  taskId: string;
+}
+
+/**
+ * CLAIM_TASK_RESULT: Response to claim request.
+ */
+export interface ClaimTaskResultPayload {
+  taskId: string;
+  success: boolean;
+  error?: string;
+  claimedAt?: string;
+}
+
+/**
+ * TASK_CLAIMED: Notifies other agents that a task was claimed.
+ * Sent to all agents in the group except the claimer.
+ */
+export interface TaskClaimedPayload {
+  taskId: string;
+  projectId: string;
+  claimedByAgentId: string;
+  claimedByAgentName: string;
+  claimedAt: string;
 }
 
 /**

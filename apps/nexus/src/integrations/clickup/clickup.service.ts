@@ -197,6 +197,41 @@ export class ClickUpService {
   }
 
   /**
+   * Parse Oblivion @tag from task description for project routing.
+   *
+   * Looks for patterns like:
+   * - @auth-refactor
+   * - @payment-v2
+   * - @bug_fixes
+   *
+   * The tag should match a Project's `oblivionTag` field.
+   * Only the FIRST @tag found is used for routing.
+   *
+   * @param description - Task description text
+   * @returns The first oblivion tag found (without @), or null if none
+   */
+  parseOblivionTag(description: string): string | null {
+    if (!description) {
+      return null;
+    }
+
+    // Match @tag patterns (alphanumeric, underscore, hyphen)
+    // More permissive than mentions to allow hyphens in project tags
+    const tagRegex = /@([A-Za-z0-9_-]+)/g;
+    const matches = description.matchAll(tagRegex);
+
+    for (const match of matches) {
+      const tag = match[1];
+      // Return the first non-empty tag found
+      if (tag && tag.length > 0) {
+        return tag;
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Check if a task description contains specific AI-related mentions
    *
    * @param description - Task description
@@ -206,6 +241,35 @@ export class ClickUpService {
   hasAIMention(description: string, targetMentions: string[] = ['AI_Squad', 'AI', 'Agent']): boolean {
     const mentions = this.parseMentions(description);
     return mentions.some((m) => targetMentions.includes(m));
+  }
+
+  /**
+   * Map ClickUp priority to internal priority (1-4 scale).
+   *
+   * ClickUp priorities:
+   * - 1: Urgent (maps to 1)
+   * - 2: High (maps to 2)
+   * - 3: Normal (maps to 3)
+   * - 4: Low (maps to 4)
+   * - null/undefined: Normal (default 3)
+   *
+   * @param task - ClickUp task
+   * @returns Priority number 1-4 (1 = highest)
+   */
+  mapPriority(task: ClickUpTask): number {
+    if (!task.priority?.id) {
+      return 3; // Default: Normal
+    }
+
+    const priorityId = parseInt(task.priority.id, 10);
+
+    // ClickUp uses 1=Urgent, 2=High, 3=Normal, 4=Low
+    // which maps directly to our system
+    if (priorityId >= 1 && priorityId <= 4) {
+      return priorityId;
+    }
+
+    return 3; // Default: Normal
   }
 
   /**

@@ -28,9 +28,20 @@ export interface SlackMessageResult {
 }
 
 /**
+ * Result of creating a Slack channel
+ */
+export interface SlackChannelResult {
+  ok: boolean;
+  channelId: string;
+  channelName: string;
+}
+
+/**
  * SlackService handles all interactions with the Slack API.
  *
  * Features:
+ * - Create and archive channels for Groups/Projects
+ * - Manage channel membership
  * - Post "Root Message" with Block Kit for new tasks
  * - Post thread replies
  * - Format messages with rich formatting
@@ -40,8 +51,13 @@ export interface SlackMessageResult {
  * - Token configured via SLACK_BOT_TOKEN env var
  *
  * Required Scopes:
+ * - channels:manage (create, archive channels)
+ * - channels:write.invites (invite users to channels)
+ * - groups:write (for private channels)
  * - chat:write
  * - chat:write.public (for posting to channels bot isn't in)
+ * - users:read (to lookup user IDs)
+ * - users:read.email (to lookup users by email)
  */
 @Injectable()
 export class SlackService {
@@ -66,6 +82,319 @@ export class SlackService {
   isConfigured(): boolean {
     return !!this.botToken;
   }
+
+  // ==================== Channel Management ====================
+
+  /**
+   * Create a new Slack channel.
+   *
+   * Channel naming convention:
+   * - Groups: `oblivion-{group-slug}`
+   * - Projects: `oblivion-{project-slug}`
+   *
+   * @param name - Channel name (will be prefixed and sanitized)
+   * @param isPrivate - Whether to create a private channel (default: false)
+   * @returns Channel info or null on failure
+   */
+  async createChannel(
+    name: string,
+    isPrivate = false,
+  ): Promise<SlackChannelResult | null> {
+    if (!this.isConfigured()) {
+      this.logger.warn('Slack bot token not configured');
+      return null;
+    }
+
+    // Sanitize channel name: lowercase, replace spaces with hyphens, remove special chars
+    const sanitizedName = name
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-_]/g, '')
+      .substring(0, 80); // Slack limit is 80 chars
+
+    try {
+      const result = await this.client.conversations.create({
+        name: sanitizedName,
+        is_private: isPrivate,
+      });
+
+      if (!result.ok || !result.channel) {
+        this.logger.error(`Failed to create channel: ${result.error}`);
+        return null;
+      }
+
+      this.logger.log(`Channel created: ${result.channel.name} (${result.channel.id})`);
+
+      return {
+        ok: true,
+        channelId: result.channel.id!,
+        channelName: result.channel.name!,
+      };
+    } catch (error: unknown) {
+      const slackError = error as { data?: { error?: string } };
+      // Handle "name_taken" error - channel already exists
+      if (slackError.data?.error === 'name_taken') {
+        this.logger.warn(`Channel "${sanitizedName}" already exists, attempting to find it`);
+        return this.findChannelByName(sanitizedName);
+      }
+      this.logger.error(`Failed to create channel "${sanitizedName}": ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Find an existing channel by name.
+   *
+   * @param name - Channel name to search for
+   * @returns Channel info or null if not found
+   */
+  async findChannelByName(name: string): Promise<SlackChannelResult | null> {
+    if (!this.isConfigured()) {
+      return null;
+    }
+
+    try {
+      // Search through public channels
+      let cursor: string | undefined;
+      do {
+        const result = await this.client.conversations.list({
+          types: 'public_channel,private_channel',
+          limit: 200,
+          cursor,
+        });
+
+        if (result.channels) {
+          const channel = result.channels.find((c) => c.name === name);
+          if (channel) {
+            return {
+              ok: true,
+              channelId: channel.id!,
+              channelName: channel.name!,
+            };
+          }
+        }
+
+        cursor = result.response_metadata?.next_cursor;
+      } while (cursor);
+
+      return null;
+    } catch (error) {
+      this.logger.error(`Failed to find channel "${name}": ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Archive a Slack channel.
+   *
+   * @param channelId - Channel ID to archive
+   * @returns true if successful, false otherwise
+   */
+  async archiveChannel(channelId: string): Promise<boolean> {
+    if (!this.isConfigured()) {
+      this.logger.warn('Slack bot token not configured');
+      return false;
+    }
+
+    try {
+      const result = await this.client.conversations.archive({
+        channel: channelId,
+      });
+
+      if (!result.ok) {
+        this.logger.error(`Failed to archive channel: ${result.error}`);
+        return false;
+      }
+
+      this.logger.log(`Channel archived: ${channelId}`);
+      return true;
+    } catch (error: unknown) {
+      const slackError = error as { data?: { error?: string } };
+      // Already archived is okay
+      if (slackError.data?.error === 'already_archived') {
+        this.logger.debug(`Channel ${channelId} already archived`);
+        return true;
+      }
+      this.logger.error(`Failed to archive channel ${channelId}: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Unarchive a Slack channel.
+   *
+   * @param channelId - Channel ID to unarchive
+   * @returns true if successful, false otherwise
+   */
+  async unarchiveChannel(channelId: string): Promise<boolean> {
+    if (!this.isConfigured()) {
+      this.logger.warn('Slack bot token not configured');
+      return false;
+    }
+
+    try {
+      const result = await this.client.conversations.unarchive({
+        channel: channelId,
+      });
+
+      if (!result.ok) {
+        this.logger.error(`Failed to unarchive channel: ${result.error}`);
+        return false;
+      }
+
+      this.logger.log(`Channel unarchived: ${channelId}`);
+      return true;
+    } catch (error: unknown) {
+      const slackError = error as { data?: { error?: string } };
+      // Not archived is okay
+      if (slackError.data?.error === 'not_archived') {
+        this.logger.debug(`Channel ${channelId} is not archived`);
+        return true;
+      }
+      this.logger.error(`Failed to unarchive channel ${channelId}: ${error}`);
+      return false;
+    }
+  }
+
+  // ==================== Channel Membership ====================
+
+  /**
+   * Invite a user to a channel.
+   *
+   * @param channelId - Channel ID
+   * @param userId - Slack user ID
+   * @returns true if successful, false otherwise
+   */
+  async inviteUserToChannel(channelId: string, userId: string): Promise<boolean> {
+    if (!this.isConfigured()) {
+      this.logger.warn('Slack bot token not configured');
+      return false;
+    }
+
+    try {
+      const result = await this.client.conversations.invite({
+        channel: channelId,
+        users: userId,
+      });
+
+      if (!result.ok) {
+        this.logger.error(`Failed to invite user: ${result.error}`);
+        return false;
+      }
+
+      this.logger.log(`User ${userId} invited to channel ${channelId}`);
+      return true;
+    } catch (error: unknown) {
+      const slackError = error as { data?: { error?: string } };
+      // Already in channel is okay
+      if (slackError.data?.error === 'already_in_channel') {
+        this.logger.debug(`User ${userId} already in channel ${channelId}`);
+        return true;
+      }
+      this.logger.error(`Failed to invite user ${userId} to channel ${channelId}: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Remove a user from a channel.
+   *
+   * @param channelId - Channel ID
+   * @param userId - Slack user ID
+   * @returns true if successful, false otherwise
+   */
+  async removeUserFromChannel(channelId: string, userId: string): Promise<boolean> {
+    if (!this.isConfigured()) {
+      this.logger.warn('Slack bot token not configured');
+      return false;
+    }
+
+    try {
+      const result = await this.client.conversations.kick({
+        channel: channelId,
+        user: userId,
+      });
+
+      if (!result.ok) {
+        this.logger.error(`Failed to remove user: ${result.error}`);
+        return false;
+      }
+
+      this.logger.log(`User ${userId} removed from channel ${channelId}`);
+      return true;
+    } catch (error: unknown) {
+      const slackError = error as { data?: { error?: string } };
+      // Not in channel is okay
+      if (slackError.data?.error === 'not_in_channel') {
+        this.logger.debug(`User ${userId} not in channel ${channelId}`);
+        return true;
+      }
+      this.logger.error(`Failed to remove user ${userId} from channel ${channelId}: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Look up a Slack user by email.
+   *
+   * @param email - User's email address
+   * @returns Slack user ID or null if not found
+   */
+  async findUserByEmail(email: string): Promise<string | null> {
+    if (!this.isConfigured()) {
+      return null;
+    }
+
+    try {
+      const result = await this.client.users.lookupByEmail({
+        email,
+      });
+
+      if (!result.ok || !result.user) {
+        return null;
+      }
+
+      return result.user.id || null;
+    } catch (error) {
+      this.logger.debug(`User not found for email ${email}`);
+      return null;
+    }
+  }
+
+  /**
+   * Post a welcome message to a newly created channel.
+   *
+   * @param channelId - Channel ID
+   * @param type - 'group' or 'project'
+   * @param name - Group or project name
+   */
+  async postWelcomeMessage(
+    channelId: string,
+    type: 'group' | 'project',
+    name: string,
+  ): Promise<void> {
+    if (!this.isConfigured()) {
+      return;
+    }
+
+    const emoji = type === 'group' ? '👥' : '📁';
+    const text =
+      type === 'group'
+        ? `${emoji} *Welcome to the ${name} team channel!*\n\nThis channel was automatically created by Oblivion for team coordination.\n\n• Task notifications will appear here\n• Collaborate with your team members\n• Reply to task threads to update context`
+        : `${emoji} *Welcome to the ${name} project channel!*\n\nThis channel was automatically created by Oblivion for project work.\n\n• New tasks with \`@${name}\` tag will appear here\n• Claim tasks and update progress\n• All context is synced with ClickUp`;
+
+    try {
+      await this.client.chat.postMessage({
+        channel: channelId,
+        text,
+        unfurl_links: false,
+      });
+    } catch (error) {
+      this.logger.error(`Failed to post welcome message: ${error}`);
+    }
+  }
+
+  // ==================== Message Posting ====================
 
   /**
    * Post the "Root Message" for a new task

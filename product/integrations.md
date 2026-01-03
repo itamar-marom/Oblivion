@@ -21,19 +21,53 @@ We are not building a simple notification bot. We are building a **State Mirror*
 ## 2. The Hierarchy Mapping
 We map the structure of the two tools so they feel like one cohesive workspace.
 
-### 2.1 Level 1: The Project (Container)
-* **ClickUp Entity:** A `List` (e.g., "Mobile App Redesign").
-* **Slack Entity:** A `Channel` (e.g., `#proj-mobile-redesign`).
+### 2.1 Level 1: The Group (Agent Team)
+* **Oblivion Entity:** A `Group` (e.g., "Backend Squad").
+* **Slack Entity:** A `Channel` (e.g., `#oblivion-backend-squad`).
+* **ClickUp Entity:** None directly - Groups are Oblivion-native.
 * **Logic:**
-    * When a **new List** is linked to Oblivion, a corresponding **Slack Channel** is automatically created (or mapped).
-    * If the List is **Archived** in ClickUp, the Slack Channel is **Archived**.
+    * When a **Group is created** in Observer, a corresponding **Slack Channel** is **automatically created**.
+    * Channel is used for **team-wide communication** between agents.
+    * Agents join/leave Groups dynamically.
 
-### 2.2 Level 2: The Task (Unit of Work)
-* **ClickUp Entity:** A `Task` (Ticket #825).
+### 2.2 Level 2: The Project (Work Scope)
+* **Oblivion Entity:** A `Project` with an `oblivion_tag` (e.g., `@auth-refactor`).
+* **Slack Entity:** A `Channel` (e.g., `#oblivion-auth-refactor`).
+* **ClickUp Entity:** An `@tag` used in task descriptions (NOT a List mapping).
+* **Logic:**
+    * When a **Project is created** under a Group, a corresponding **Slack Channel** is **automatically created**.
+    * Channel is used for **task discussions** and **work updates**.
+    * Tasks are routed by parsing `@tag` in ClickUp task descriptions.
+
+### 2.3 Level 3: The Task (Unit of Work)
+* **ClickUp Entity:** A `Task` with `@project-tag` in description (Ticket #825).
 * **Slack Entity:** A `Thread` (inside the Project Channel).
 * **Logic:**
     * We do **not** create a new channel per task (too noisy).
-    * We create a single **"Root Message"** in the Project Channel for every Task. All work happens in the replies to that message.
+    * We create a single **"Root Message"** in the Project Channel for every Task.
+    * Agents **claim** tasks (not auto-assigned).
+    * All work happens in the replies to that message.
+
+### 2.4 Routing Flow
+```
+ClickUp Task Description: "Fix the login bug. @auth-refactor please handle."
+                                             │
+                                             ▼
+                              Parse @tag: "auth-refactor"
+                                             │
+                                             ▼
+                              Lookup Project by oblivion_tag
+                                             │
+                                             ▼
+                              Get Project's Group → Get Member Agents
+                                             │
+                                             ▼
+                              Post to Project's Slack Channel
+                              + Send TASK_AVAILABLE to all Group Agents
+                                             │
+                                             ▼
+                              Agent claims task → TASK_CLAIMED event
+```
 
 ---
 
@@ -41,16 +75,29 @@ We map the structure of the two tools so they feel like one cohesive workspace.
 
 ### Story A: The "Summoning" (Task Creation)
 **As a** Product Manager,
-**I want** to assign a task to AI by just tagging them in ClickUp,
+**I want** to assign a task to a project/group by tagging them in ClickUp,
 **So that** I don't have to switch context to Slack to copy-paste instructions.
 
 **Acceptance Criteria:**
-1.  User creates a task in ClickUp: *"Fix the login bug. @AI_Squad please handle."*
-2.  **Within 5 seconds**, a message appears in the mapped Slack channel:
+1.  User creates a task in ClickUp: *"Fix the login bug. @auth-refactor please handle."*
+2.  **Within 5 seconds**, a message appears in the `#oblivion-auth-refactor` Slack channel:
     * **Title:** Link to the ClickUp Task.
-    * **Status:** "READY".
+    * **Status:** "AVAILABLE".
     * **Context:** The description from ClickUp.
-3.  The relevant Agents (`@AI_Squad`) are tagged in the Slack thread.
+    * **Priority:** From ClickUp priority field.
+3.  All Agents in the "Backend Squad" (Group owning `@auth-refactor` project) receive `TASK_AVAILABLE` event.
+
+### Story A2: The "Claiming" (Agent Takes Ownership)
+**As an** AI Agent,
+**I want** to claim tasks that I'm capable of handling,
+**So that** I can work without conflicts with other agents.
+
+**Acceptance Criteria:**
+1.  Agent sees `TASK_AVAILABLE` event with task details.
+2.  Agent evaluates if it can handle the task (based on capabilities, current load).
+3.  Agent sends `CLAIM_TASK` request to Nexus.
+4.  If successful, task status changes to "CLAIMED" and Slack thread updated.
+5.  Other agents receive `TASK_CLAIMED` event (so they don't also claim it).
 
 ### Story B: The "Progress Report" (Agent Update)
 **As a** Stakeholder watching ClickUp,

@@ -20,10 +20,12 @@ The **Observer Dashboard** is the control center for the Oblivion Platform. It i
 The application is a **Next.js** Single Page App (SPA) with the following structure:
 
 * **Home (The Pulse):** Live activity feed of the system.
-* **Agents (The Roster):** Management of the AI workforce.
-* **Connections (The Map):** Linking ClickUp Lists $\leftrightarrow$ Slack Channels.
+* **Groups (The Teams):** Management of Agent teams and their Slack channels.
+* **Projects (The Scopes):** Work scopes under Groups with @tags for ClickUp routing.
+* **Agents (The Roster):** Management of the AI workforce and Group memberships.
+* **Activity (The Stream):** Filtered activity log with search.
 * **Logs (The Black Box):** Raw request/response viewer for debugging.
-* **Settings:** API Keys and Billing.
+* **Settings:** Nexus connection, integrations, notifications, security.
 
 ---
 
@@ -40,26 +42,44 @@ The application is a **Next.js** Single Page App (SPA) with the following struct
 * **Interaction:** Clicking any line item opens the detailed **Log Viewer**.
 
 ### 3.2 The Agent Roster
-**Goal:** Manage the "Employees."
+**Goal:** Manage the "Employees" and their Group memberships.
 
 * **The Grid View:** A card for every registered Agent.
-    * **Status Dot:** 🟢 Online / 🔴 Offline / 🟡 Busy.
-    * **Metadata:** Name, Role, and "Last Seen" timestamp.
+    * **Status Dot:** 🟢 Online / 🔴 Offline / 🟡 Working.
+    * **Metadata:** Name, Role, Capabilities, and "Last Seen" timestamp.
+    * **Groups:** List of Groups this Agent belongs to.
 * **Controls:**
     * **Kick:** Disconnects the Agent's WebSocket immediately.
     * **Ban:** Revokes the Agent's Client ID (preventing reconnection).
-    * **Assign:** A dropdown to manually add an Agent to a specific Project.
+    * **Manage Groups:** Add/remove Agent from Groups.
 
-### 3.3 Connection Manager (The Mapper)
-**Goal:** The core configuration screen where "Mirroring" is set up.
+### 3.3 Group Manager
+**Goal:** Create and manage Agent teams.
 
-* **UI Pattern:** A Split View.
-    * **Left Column:** ClickUp Spaces/Lists (fetched via API).
-    * **Right Column:** Slack Channels (fetched via API).
-* **Action:** Drag-and-drop (or simple dropdown selection) to draw a line between a List and a Channel.
-* **State:** A toggle switch for `Sync Active` / `Sync Paused`.
+* **The List View:** All Groups with member count and status.
+* **Group Detail View:**
+    * **Info:** Name, description, Slack channel (auto-created).
+    * **Members:** List of Agents with Join/Leave actions.
+    * **Projects:** List of Projects under this Group.
+* **Actions:**
+    * **Create Group:** Creates Group + auto-creates Slack channel.
+    * **Delete Group:** Removes Group (archives Slack channel).
+    * **Add Agent:** Assigns Agent to Group.
 
-### 3.4 The "Black Box" (Trace View)
+### 3.4 Project Manager
+**Goal:** Create work scopes with ClickUp @tag routing.
+
+* **The List View:** All Projects grouped by their parent Group.
+* **Project Detail View:**
+    * **Info:** Name, description, `oblivion_tag` for ClickUp routing.
+    * **Slack Channel:** Auto-created channel name.
+    * **Tasks:** List of active tasks in this Project.
+* **Actions:**
+    * **Create Project:** Creates Project + auto-creates Slack channel.
+    * **Configure Tag:** Set the `@tag` that routes ClickUp tasks to this Project.
+    * **Archive Project:** Deactivates Project (archives Slack channel).
+
+### 3.5 The "Black Box" (Trace View)
 **Goal:** Debugging when things go wrong.
 
 * **Scenario:** An agent claims it replied, but nothing appeared in ClickUp.
