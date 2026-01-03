@@ -1,0 +1,43 @@
+# Oblivion Umbrella Chart - Base Values
+
+global:
+  environment: development
+  domain: oblivion.local
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  image:
+    tag: "latest"  # Use latest available
+  auth:
+    database: oblivion_db
+    username: oblivion
+    password: oblivion_dev_password  # Change for production
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+
+# Redis configuration
+redis:
+  enabled: true
+  image:
+    tag: "latest"  # Use latest available
+  architecture: standalone
+  auth:
+    enabled: false  # Disable for local dev
+  master:
+    persistence:
+      enabled: false  # Disable for local dev speed
+
+# Qdrant configuration
+qdrant:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+  config:
+    service:
+      grpc_port: 6334
+      http_port: 6333
+

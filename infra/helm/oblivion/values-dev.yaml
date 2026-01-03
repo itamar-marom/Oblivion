@@ -1,0 +1,41 @@
+# Oblivion Umbrella Chart - Development Overrides
+
+global:
+  environment: development
+  domain: localhost
+
+# PostgreSQL - lighter resources for local dev
+postgresql:
+  primary:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# Redis - minimal resources, no persistence
+redis:
+  master:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+# Qdrant - persistent storage for vectors
+qdrant:
+  persistence:
+    enabled: true
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+

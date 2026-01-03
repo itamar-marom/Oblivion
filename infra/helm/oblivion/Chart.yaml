@@ -1,0 +1,24 @@
+apiVersion: v2
+name: oblivion
+description: Oblivion AI Agent Orchestration Platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+dependencies:
+  - name: postgresql
+    version: "~16.2.0"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "~20.5.0"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+  - name: qdrant
+    version: "~0.9.0"
+    repository: https://qdrant.github.io/qdrant-helm
+    condition: qdrant.enabled
+
+maintainers:
+  - name: Oblivion Team
+    email: engineering@oblivion.dev
