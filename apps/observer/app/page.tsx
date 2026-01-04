@@ -4,17 +4,21 @@ import { useNexus } from "@/hooks/use-nexus";
 import { StatsCard } from "@/components/stats-card";
 import { ActivityFeed } from "@/components/activity-feed";
 import { AgentStatusList } from "@/components/agent-status-list";
-import { Bot, GitBranch, Webhook, AlertTriangle, Activity, CheckCircle } from "lucide-react";
+import { Bot, FolderKanban, ListTodo, ClipboardList, Users, CheckCircle } from "lucide-react";
 
 export default function Dashboard() {
-  const { connected, agents, activity, stats } = useNexus();
+  const { connected, wsConnected, agents, activity, stats, isLoading, error } = useNexus();
 
   return (
     <div className="p-8">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-zinc-400">Monitor your AI agent ecosystem</p>
+        <div className="flex items-center gap-4">
+          <p className="text-zinc-400">Monitor your AI agent ecosystem</p>
+          {isLoading && <span className="text-xs text-yellow-400">Loading...</span>}
+          {error && <span className="text-xs text-red-400">{error}</span>}
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -30,34 +34,34 @@ export default function Dashboard() {
           title="Active Tasks"
           value={stats.activeTasks}
           subtitle="in progress"
-          icon={Activity}
+          icon={ClipboardList}
           color="blue"
         />
         <StatsCard
-          title="Project Mappings"
-          value={stats.projectMappings}
-          subtitle="configured"
-          icon={GitBranch}
+          title="Available Tasks"
+          value={stats.availableTasks || 0}
+          subtitle="pending claim"
+          icon={ListTodo}
+          color="yellow"
+        />
+        <StatsCard
+          title="Groups"
+          value={stats.totalGroups || 0}
+          subtitle="agent teams"
+          icon={Users}
           color="purple"
         />
         <StatsCard
-          title="Webhooks Today"
-          value={stats.webhooksToday}
-          subtitle="received"
-          icon={Webhook}
+          title="Projects"
+          value={stats.totalProjects || 0}
+          subtitle="active"
+          icon={FolderKanban}
           color="green"
-        />
-        <StatsCard
-          title="Errors Today"
-          value={stats.errorsToday}
-          subtitle="failures"
-          icon={AlertTriangle}
-          color={stats.errorsToday > 0 ? "red" : "green"}
         />
         <StatsCard
           title="System Status"
           value={connected ? "Online" : "Connecting..."}
-          subtitle="Nexus connection"
+          subtitle={wsConnected ? "Real-time" : "Polling"}
           icon={CheckCircle}
           color={connected ? "green" : "yellow"}
         />
