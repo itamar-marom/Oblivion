@@ -8,6 +8,12 @@ async function bootstrap() {
     rawBody: true,
   });
 
+  // Enable CORS for Observer dashboard
+  app.enableCors({
+    origin: ['http://localhost:3001', 'http://127.0.0.1:3001'],
+    credentials: true,
+  });
+
   // Enable global validation for DTOs
   app.useGlobalPipes(
     new ValidationPipe({

@@ -65,6 +65,18 @@ async function main() {
         isActive: true,
       },
     }),
+    // Observer Dashboard - special agent for monitoring
+    prisma.agent.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Observer Dashboard',
+        description: 'Admin dashboard for monitoring the agent ecosystem',
+        clientId: 'observer-dashboard',
+        clientSecret: await bcrypt.hash('observer_secret', 10),
+        capabilities: ['observe', 'admin'],
+        isActive: true,
+      },
+    }),
   ]);
   console.log(`✅ Created ${agents.length} agents`);
 

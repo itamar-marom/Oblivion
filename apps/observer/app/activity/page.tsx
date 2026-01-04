@@ -18,38 +18,44 @@ import {
 } from "lucide-react";
 import type { ActivityEvent } from "@/lib/types";
 
-const eventIcons = {
+const eventIcons: Record<string, typeof Webhook> = {
   webhook_received: Webhook,
   task_assigned: ArrowRight,
   task_available: ListTodo,
+  task_created: ListTodo,
   task_claimed: Hand,
   agent_connected: Bot,
   agent_disconnected: Bot,
   status_update: CheckCircle,
+  status_change: CheckCircle,
   context_update: MessageSquare,
   error: AlertCircle,
 };
 
-const eventColors = {
+const eventColors: Record<string, string> = {
   webhook_received: "bg-blue-500/20 text-blue-400 border-blue-500/30",
   task_assigned: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
   task_available: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  task_created: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
   task_claimed: "bg-amber-500/20 text-amber-400 border-amber-500/30",
   agent_connected: "bg-green-500/20 text-green-400 border-green-500/30",
   agent_disconnected: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
   status_update: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  status_change: "bg-purple-500/20 text-purple-400 border-purple-500/30",
   context_update: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
   error: "bg-red-500/20 text-red-400 border-red-500/30",
 };
 
-const eventLabels = {
+const eventLabels: Record<string, string> = {
   webhook_received: "Webhook",
   task_assigned: "Task Assigned",
   task_available: "Task Available",
+  task_created: "Task Created",
   task_claimed: "Task Claimed",
   agent_connected: "Agent Connected",
   agent_disconnected: "Agent Disconnected",
   status_update: "Status Update",
+  status_change: "Status Change",
   context_update: "Context Update",
   error: "Error",
 };

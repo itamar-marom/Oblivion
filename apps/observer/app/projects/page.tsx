@@ -15,13 +15,15 @@ import {
   Filter,
 } from "lucide-react";
 import { useNexus } from "@/hooks/use-nexus";
+import { CreateProjectModal } from "@/components/modals";
 import type { Project } from "@/lib/types";
 
 export default function ProjectsPage() {
-  const { projects, groups, connected } = useNexus();
+  const { projects, groups, connected, refresh } = useNexus();
   const [searchQuery, setSearchQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | "all">("all");
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Filter projects
   const filteredProjects = projects.filter((project) => {
@@ -60,7 +62,10 @@ export default function ProjectsPage() {
               Manage Work Scopes and @tag routing
             </p>
           </div>
-          <button className="flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 transition-colors">
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500 transition-colors"
+          >
             <Plus className="h-4 w-4" />
             Create Project
           </button>
@@ -244,7 +249,10 @@ export default function ProjectsPage() {
                 : "Create your first project to get started"}
             </p>
             {!searchQuery && (
-              <button className="mt-4 flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 transition-colors">
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="mt-4 flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500 transition-colors"
+              >
                 <Plus className="h-4 w-4" />
                 Create Project
               </button>
@@ -305,6 +313,13 @@ export default function ProjectsPage() {
           Connecting to Nexus...
         </div>
       )}
+
+      {/* Create Project Modal */}
+      <CreateProjectModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={refresh}
+      />
     </div>
   );
 }

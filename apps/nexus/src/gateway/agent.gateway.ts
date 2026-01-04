@@ -20,6 +20,9 @@ import type {
   ToolRequestPayload,
   ClaimTaskPayload,
   ClaimTaskResultPayload,
+  AgentConnectedPayload,
+  AgentDisconnectedPayload,
+  AgentStatusChangedPayload,
 } from './dto/events.dto';
 
 /**
@@ -156,6 +159,17 @@ export class AgentGateway
         agentId: payload.sub,
         serverTime: new Date().toISOString(),
       });
+
+      // Broadcast AGENT_CONNECTED to tenant (for Observer dashboard)
+      const connectedEvent = createEvent<AgentConnectedPayload>(
+        EventType.AGENT_CONNECTED,
+        {
+          agentId: payload.sub,
+          clientId: payload.clientId,
+          connectedAt: new Date().toISOString(),
+        },
+      );
+      this.server.to(`tenant:${payload.tenantId}`).emit(connectedEvent.type, connectedEvent);
     } catch (error) {
       console.error(`Connection error: ${error}`);
       client.disconnect(true);
@@ -166,12 +180,25 @@ export class AgentGateway
    * Handle agent disconnections.
    */
   async handleDisconnect(client: AuthenticatedSocket) {
-    if (client.agentId) {
+    if (client.agentId && client.tenantId) {
       const connection = await this.redisService.removeConnection(client.id);
       if (connection) {
         console.log(
           `Agent disconnected: ${connection.clientId} (socket: ${client.id})`,
         );
+
+        // Broadcast AGENT_DISCONNECTED to tenant (for Observer dashboard)
+        const disconnectedEvent = createEvent<AgentDisconnectedPayload>(
+          EventType.AGENT_DISCONNECTED,
+          {
+            agentId: client.agentId,
+            clientId: connection.clientId,
+            disconnectedAt: new Date().toISOString(),
+          },
+        );
+        this.server
+          .to(`tenant:${client.tenantId}`)
+          .emit(disconnectedEvent.type, disconnectedEvent);
       }
     }
   }
@@ -223,14 +250,36 @@ export class AgentGateway
       error: 'error',
     };
 
-    await this.redisService.updateHeartbeat(
-      client.id,
-      statusMap[data.payload.status],
-    );
+    // Get previous status before updating
+    const previousConnection = client.agentId
+      ? await this.redisService.getConnectionByAgentId(client.agentId)
+      : null;
+    const previousStatus = previousConnection?.status || 'connected';
+
+    const newStatus = statusMap[data.payload.status];
+    await this.redisService.updateHeartbeat(client.id, newStatus);
 
     console.log(
       `Agent status: ${client.clientId} → ${data.payload.status}${data.payload.taskId ? ` (task: ${data.payload.taskId})` : ''}`,
     );
+
+    // Broadcast AGENT_STATUS_CHANGED to tenant (for Observer dashboard)
+    if (client.agentId && client.tenantId && previousStatus !== newStatus) {
+      const statusEvent = createEvent<AgentStatusChangedPayload>(
+        EventType.AGENT_STATUS_CHANGED,
+        {
+          agentId: client.agentId,
+          clientId: client.clientId || '',
+          previousStatus: previousStatus as AgentStatusChangedPayload['previousStatus'],
+          newStatus: newStatus as AgentStatusChangedPayload['newStatus'],
+          taskId: data.payload.taskId,
+          changedAt: new Date().toISOString(),
+        },
+      );
+      this.server
+        .to(`tenant:${client.tenantId}`)
+        .emit(statusEvent.type, statusEvent);
+    }
 
     return { acknowledged: true };
   }

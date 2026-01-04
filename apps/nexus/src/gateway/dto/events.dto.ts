@@ -25,6 +25,11 @@ export enum EventType {
   TOOL_REQUEST = 'tool_request',
   STATUS_UPDATE = 'status_update',
   CLAIM_TASK = 'claim_task', // Agent requests to claim a task
+
+  // Observer Events (broadcast to tenant)
+  AGENT_CONNECTED = 'agent_connected', // Agent connected to WebSocket
+  AGENT_DISCONNECTED = 'agent_disconnected', // Agent disconnected
+  AGENT_STATUS_CHANGED = 'agent_status_changed', // Agent status changed
 }
 
 /**
@@ -154,6 +159,46 @@ export interface TaskClaimedPayload {
   claimedByAgentId: string;
   claimedByAgentName: string;
   claimedAt: string;
+}
+
+// =============================================================================
+// OBSERVER EVENTS (Phase 3 - Real-time dashboard)
+// =============================================================================
+
+/**
+ * AGENT_CONNECTED: Agent connected to WebSocket.
+ * Broadcast to tenant for Observer dashboard.
+ */
+export interface AgentConnectedPayload {
+  agentId: string;
+  clientId: string;
+  agentName?: string;
+  connectedAt: string;
+}
+
+/**
+ * AGENT_DISCONNECTED: Agent disconnected from WebSocket.
+ * Broadcast to tenant for Observer dashboard.
+ */
+export interface AgentDisconnectedPayload {
+  agentId: string;
+  clientId: string;
+  agentName?: string;
+  disconnectedAt: string;
+}
+
+/**
+ * AGENT_STATUS_CHANGED: Agent status changed.
+ * Broadcast to tenant for Observer dashboard.
+ */
+export interface AgentStatusChangedPayload {
+  agentId: string;
+  clientId: string;
+  agentName?: string;
+  previousStatus: 'connected' | 'idle' | 'working' | 'error';
+  newStatus: 'connected' | 'idle' | 'working' | 'error';
+  taskId?: string;
+  changedAt: string;
 }
 
 /**

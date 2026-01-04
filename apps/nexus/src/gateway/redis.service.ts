@@ -104,6 +104,15 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Get connection info by agent ID.
+   */
+  async getConnectionByAgentId(agentId: string): Promise<AgentConnection | null> {
+    const socketId = await this.client.get(`agent:${agentId}`);
+    if (!socketId) return null;
+    return this.getConnectionBySocket(socketId);
+  }
+
+  /**
    * Get all connected agents for a tenant.
    */
   async getConnectedAgentsForTenant(tenantId: string): Promise<string[]> {

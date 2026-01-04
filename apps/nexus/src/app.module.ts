@@ -10,6 +10,7 @@ import { IntegrationsModule } from './integrations/integrations.module';
 import { GroupsModule } from './groups/groups.module';
 import { ProjectsModule } from './projects/projects.module';
 import { TasksModule } from './tasks/tasks.module';
+import { ObserverModule } from './observer/observer.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { TasksModule } from './tasks/tasks.module';
     GroupsModule, // Agent Teams management
     ProjectsModule, // Work Scopes management
     TasksModule, // Task claiming and management
+    ObserverModule, // Dashboard data aggregation
   ],
   controllers: [AppController],
   providers: [AppService],

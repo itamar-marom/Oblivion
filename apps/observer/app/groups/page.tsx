@@ -14,13 +14,15 @@ import {
   Crown,
 } from "lucide-react";
 import { useNexus } from "@/hooks/use-nexus";
+import { CreateGroupModal } from "@/components/modals";
 import type { Group } from "@/lib/types";
 
 export default function GroupsPage() {
-  const { groups, agents, connected } = useNexus();
+  const { groups, connected, refresh } = useNexus();
   const [searchQuery, setSearchQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Filter groups based on search and status
   const filteredGroups = groups.filter((group) => {
@@ -50,7 +52,10 @@ export default function GroupsPage() {
               Manage Agent Teams and their members
             </p>
           </div>
-          <button className="flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 transition-colors">
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 transition-colors"
+          >
             <Plus className="h-4 w-4" />
             Create Group
           </button>
@@ -210,7 +215,10 @@ export default function GroupsPage() {
               : "Create your first group to get started"}
           </p>
           {!searchQuery && (
-            <button className="mt-4 flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 transition-colors">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="mt-4 flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 transition-colors"
+            >
               <Plus className="h-4 w-4" />
               Create Group
             </button>
@@ -225,6 +233,13 @@ export default function GroupsPage() {
           Connecting to Nexus...
         </div>
       )}
+
+      {/* Create Group Modal */}
+      <CreateGroupModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={refresh}
+      />
     </div>
   );
 }

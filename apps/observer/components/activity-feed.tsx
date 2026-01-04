@@ -15,26 +15,30 @@ interface ActivityFeedProps {
   events: ActivityEvent[];
 }
 
-const eventIcons = {
+const eventIcons: Record<string, typeof Webhook> = {
   webhook_received: Webhook,
   task_assigned: ArrowRight,
   task_available: ListTodo,
+  task_created: ListTodo,
   task_claimed: Hand,
   agent_connected: Bot,
   agent_disconnected: Bot,
   status_update: CheckCircle,
+  status_change: CheckCircle,
   context_update: MessageSquare,
   error: AlertCircle,
 };
 
-const eventColors = {
+const eventColors: Record<string, string> = {
   webhook_received: "text-blue-400",
   task_assigned: "text-cyan-400",
   task_available: "text-emerald-400",
+  task_created: "text-emerald-400",
   task_claimed: "text-amber-400",
   agent_connected: "text-green-400",
   agent_disconnected: "text-zinc-500",
   status_update: "text-purple-400",
+  status_change: "text-purple-400",
   context_update: "text-yellow-400",
   error: "text-red-400",
 };
