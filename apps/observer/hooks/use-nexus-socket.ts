@@ -105,7 +105,7 @@ interface UseNexusSocketReturn {
   reconnecting: boolean;
 }
 
-const NEXUS_WS_URL = process.env.NEXT_PUBLIC_NEXUS_WS_URL || "http://localhost:3001";
+const NEXUS_WS_URL = process.env.NEXT_PUBLIC_NEXUS_WS_URL || "http://localhost:3000";
 
 /**
  * Transform WebSocket events to ActivityEvent format

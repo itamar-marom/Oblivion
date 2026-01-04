@@ -121,7 +121,7 @@ export function CreateProjectModal({
         name: name.trim(),
         slug: slug.trim(),
         description: description.trim() || undefined,
-        oblivionTag: tagValue,
+        oblivionTag: tagValue.replace(/^@/, ""), // API expects tag without @ prefix
       };
 
       await projectsApi.create(dto);

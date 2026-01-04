@@ -14,8 +14,9 @@ import {
   Crown,
 } from "lucide-react";
 import { useNexus } from "@/hooks/use-nexus";
-import { CreateGroupModal } from "@/components/modals";
+import { CreateGroupModal, EditGroupModal } from "@/components/modals";
 import type { Group } from "@/lib/types";
+import type { Group as ApiGroup } from "@/lib/api-client";
 
 export default function GroupsPage() {
   const { groups, connected, refresh } = useNexus();
@@ -238,6 +239,14 @@ export default function GroupsPage() {
       <CreateGroupModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
+        onSuccess={refresh}
+      />
+
+      {/* Edit Group Modal */}
+      <EditGroupModal
+        isOpen={!!selectedGroup}
+        group={selectedGroup as unknown as ApiGroup}
+        onClose={() => setSelectedGroup(null)}
         onSuccess={refresh}
       />
     </div>

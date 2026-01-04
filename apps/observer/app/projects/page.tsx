@@ -6,17 +6,15 @@ import {
   Plus,
   Search,
   Hash,
-  MoreVertical,
-  Archive,
   Users,
   Tag,
   ListTodo,
-  ExternalLink,
   Filter,
 } from "lucide-react";
 import { useNexus } from "@/hooks/use-nexus";
-import { CreateProjectModal } from "@/components/modals";
+import { CreateProjectModal, EditProjectModal } from "@/components/modals";
 import type { Project } from "@/lib/types";
+import type { Project as ApiProject } from "@/lib/api-client";
 
 export default function ProjectsPage() {
   const { projects, groups, connected, refresh } = useNexus();
@@ -24,6 +22,7 @@ export default function ProjectsPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | "all">("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
   // Filter projects
   const filteredProjects = projects.filter((project) => {
@@ -223,11 +222,11 @@ export default function ProjectsPage() {
                 {/* Actions */}
                 <td className="px-6 py-4 text-right">
                   <div className="flex items-center justify-end gap-2">
-                    <button className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-white transition-colors">
-                      <ExternalLink className="h-4 w-4" />
-                    </button>
-                    <button className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-white transition-colors">
-                      <MoreVertical className="h-4 w-4" />
+                    <button
+                      onClick={() => setSelectedProject(project)}
+                      className="rounded-lg px-3 py-1.5 text-xs font-medium text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+                    >
+                      Edit
                     </button>
                   </div>
                 </td>
@@ -318,6 +317,14 @@ export default function ProjectsPage() {
       <CreateProjectModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
+        onSuccess={refresh}
+      />
+
+      {/* Edit Project Modal */}
+      <EditProjectModal
+        isOpen={!!selectedProject}
+        project={selectedProject as unknown as ApiProject}
+        onClose={() => setSelectedProject(null)}
         onSuccess={refresh}
       />
     </div>
