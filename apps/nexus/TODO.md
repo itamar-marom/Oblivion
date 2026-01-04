@@ -55,7 +55,7 @@ See updated specs:
 - [x] Claim validation (first-come-first-served with optimistic locking)
 - [x] Priority ordering (from ClickUp priority field)
 - [x] REST endpoints: `GET /tasks/available`, `GET /tasks/claimed`, `POST /tasks/:id/claim`, `PATCH /tasks/:id/status`
-- [ ] Update Slack thread when task is claimed (requires Slack API)
+- [x] Update Slack thread when task is claimed (`TasksService.claimTask()` → `SlackService.postThreadReply()`)
 
 ### @Tag Routing ✅ COMPLETE
 **Location:** `src/webhooks/processors/webhook.processor.ts`
@@ -76,12 +76,16 @@ use new TASK_AVAILABLE event; tasks without @tag use legacy TASK_ASSIGNED event.
 - [x] Create channel when Group is created (`#oblivion-{group-slug}`)
 - [x] Create channel when Project is created (`#oblivion-{project-slug}`)
 - [x] Archive channel when Group/Project is archived
-- [ ] Add agents to channels when they join groups (blocked: Agent model lacks slackUserId field)
+- [x] Add agents to channels when they join groups (`GroupsService.addMember()` → `SlackService.inviteUserToChannel()`)
+- [x] Auto-lookup Slack user ID by email when agent joins group (`SlackService.findUserByEmail()`)
 
 **Implemented in:**
 - `src/integrations/slack/slack.service.ts` - Channel management methods
 - `src/groups/groups.service.ts:32-60` - Auto-create channel on group creation
 - `src/groups/groups.service.ts:251-257` - Archive channel on group archive
+- `src/groups/groups.service.ts:301-314` - Auto-lookup Slack user ID by email
+- `src/groups/groups.service.ts:334-343` - Invite agent to channel on addMember()
+- `src/groups/groups.service.ts:392-401` - Remove agent from channel on removeMember()
 - `src/projects/projects.service.ts:73-86` - Auto-create channel on project creation
 - `src/projects/projects.service.ts:320-326` - Archive channel on project archive
 
@@ -190,15 +194,15 @@ use new TASK_AVAILABLE event; tasks without @tag use legacy TASK_ASSIGNED event.
 - `src/tasks/tasks.service.ts:415-509` - `syncStatusFromClickUp()` method
 - `src/webhooks/processors/webhook.processor.ts:316-454` - `handleTaskUpdated()` with history_items parsing
 
-### Task Comment Handling
-**Location:** `src/webhooks/processors/clickup.processor.ts`
+### Task Comment Handling ✅ COMPLETE
+**Location:** `src/webhooks/processors/webhook.processor.ts`
 
-- [ ] Fetch comment details from ClickUp API
-- [ ] Post comment content to Slack thread
-- [ ] Emit `CONTEXT_UPDATE` to agents
+- [x] Extract comment from webhook `history_items`
+- [x] Post comment content to Slack thread (`SlackService.formatCommentForSlack()` + `postThreadReply()`)
+- [x] Emit `CONTEXT_UPDATE` to group agents
 
-**Referenced in:**
-- `src/webhooks/processors/clickup.processor.ts:215-217`
+**Implemented in:**
+- `src/webhooks/processors/webhook.processor.ts:250-318` - `handleTaskComment()` method
 
 ### App Mention Commands
 **Location:** `src/webhooks/processors/slack.processor.ts`

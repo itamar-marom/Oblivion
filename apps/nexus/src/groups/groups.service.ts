@@ -261,7 +261,8 @@ export class GroupsService {
 
   /**
    * Add an agent to a group.
-   * TODO: Add agent to Slack channel when SlackService is implemented.
+   * Also invites the agent to the group's Slack channel.
+   * If agent has email but no slackUserId, attempts auto-lookup.
    */
   async addMember(tenantId: string, groupId: string, dto: AddMemberDto) {
     // Verify group exists
@@ -276,6 +277,7 @@ export class GroupsService {
     // Verify agent exists and belongs to same tenant
     const agent = await this.prisma.agent.findFirst({
       where: { id: dto.agentId, tenantId, isActive: true },
+      select: { id: true, name: true, email: true, avatarUrl: true, slackUserId: true },
     });
 
     if (!agent) {
@@ -296,6 +298,21 @@ export class GroupsService {
       throw new ConflictException(`Agent is already a member of this group`);
     }
 
+    // Auto-lookup Slack user ID by email if not already set
+    let slackUserId = agent.slackUserId;
+    if (!slackUserId && agent.email && group.slackChannelId) {
+      const foundUserId = await this.slackService.findUserByEmail(agent.email);
+      if (foundUserId) {
+        slackUserId = foundUserId;
+        // Persist the discovered Slack user ID
+        await this.prisma.agent.update({
+          where: { id: agent.id },
+          data: { slackUserId: foundUserId },
+        });
+        this.logger.log(`Auto-discovered Slack user ID for "${agent.name}" via email`);
+      }
+    }
+
     // Add membership
     const membership = await this.prisma.agentGroupMembership.create({
       data: {
@@ -314,8 +331,16 @@ export class GroupsService {
       },
     });
 
-    // TODO: Call SlackService to add agent to channel
-    // await this.slackService.addUserToChannel(group.slackChannelId, agent.slackUserId);
+    // Invite agent to Slack channel if we have the Slack user ID
+    if (group.slackChannelId && slackUserId) {
+      const invited = await this.slackService.inviteUserToChannel(
+        group.slackChannelId,
+        slackUserId,
+      );
+      if (invited) {
+        this.logger.log(`Agent "${agent.name}" invited to Slack channel ${group.slackChannelName}`);
+      }
+    }
 
     return {
       id: membership.id,
@@ -328,7 +353,7 @@ export class GroupsService {
 
   /**
    * Remove an agent from a group.
-   * TODO: Remove agent from Slack channel when SlackService is implemented.
+   * Also removes the agent from the group's Slack channel if applicable.
    */
   async removeMember(tenantId: string, groupId: string, agentId: string) {
     // Verify group exists and belongs to tenant
@@ -340,12 +365,17 @@ export class GroupsService {
       throw new NotFoundException(`Group not found`);
     }
 
-    // Find membership
+    // Find membership with agent's Slack info
     const membership = await this.prisma.agentGroupMembership.findUnique({
       where: {
         agentId_groupId: {
           agentId,
           groupId,
+        },
+      },
+      include: {
+        agent: {
+          select: { name: true, slackUserId: true },
         },
       },
     });
@@ -359,8 +389,16 @@ export class GroupsService {
       where: { id: membership.id },
     });
 
-    // TODO: Call SlackService to remove agent from channel
-    // await this.slackService.removeUserFromChannel(group.slackChannelId, agentId);
+    // Remove agent from Slack channel if both have Slack IDs
+    if (group.slackChannelId && membership.agent.slackUserId) {
+      const removed = await this.slackService.removeUserFromChannel(
+        group.slackChannelId,
+        membership.agent.slackUserId,
+      );
+      if (removed) {
+        this.logger.log(`Agent "${membership.agent.name}" removed from Slack channel ${group.slackChannelName}`);
+      }
+    }
 
     return { success: true, message: 'Member removed from group' };
   }

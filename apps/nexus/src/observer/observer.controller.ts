@@ -1,12 +1,16 @@
 import {
   Controller,
   Get,
+  Patch,
+  Param,
+  Body,
   Query,
   UseGuards,
   Request,
 } from '@nestjs/common';
 import { ObserverService } from './observer.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { UpdateAgentDto } from './dto';
 
 /**
  * Observer Controller.
@@ -14,10 +18,12 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
  * REST API for the Observer dashboard.
  *
  * Endpoints:
- * - GET /observer/stats      Dashboard statistics
- * - GET /observer/agents     All agents with connection status
- * - GET /observer/activity   Recent activity events
- * - GET /observer/tasks      Task queue grouped by status
+ * - GET /observer/stats         Dashboard statistics
+ * - GET /observer/agents        All agents with connection status
+ * - GET /observer/agents/:id    Single agent details
+ * - PATCH /observer/agents/:id  Update agent profile
+ * - GET /observer/activity      Recent activity events
+ * - GET /observer/tasks         Task queue grouped by status
  */
 @Controller('observer')
 @UseGuards(JwtAuthGuard)
@@ -52,6 +58,29 @@ export class ObserverController {
   @Get('agents')
   async getAgents(@Request() req) {
     return this.observerService.getAgents(req.user.tenantId);
+  }
+
+  /**
+   * Get a single agent by ID with full details.
+   */
+  @Get('agents/:id')
+  async getAgent(@Request() req, @Param('id') agentId: string) {
+    return this.observerService.getAgent(req.user.tenantId, agentId);
+  }
+
+  /**
+   * Update an agent's profile.
+   *
+   * Updatable fields:
+   * - name, description, email, avatarUrl, slackUserId, capabilities
+   */
+  @Patch('agents/:id')
+  async updateAgent(
+    @Request() req,
+    @Param('id') agentId: string,
+    @Body() dto: UpdateAgentDto,
+  ) {
+    return this.observerService.updateAgent(req.user.tenantId, agentId, dto);
   }
 
   /**

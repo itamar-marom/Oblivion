@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentGateway } from '../gateway/agent.gateway';
+import { SlackService } from '../integrations/slack/slack.service';
 import {
   EventType,
   createEvent,
@@ -32,6 +33,7 @@ export class TasksService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private gateway: AgentGateway,
+    private slackService: SlackService,
   ) {}
 
   /**
@@ -247,7 +249,18 @@ export class TasksService implements OnModuleInit {
       );
     }
 
-    console.log(
+    // Post to Slack thread if task has Slack info
+    if (task.slackChannelId && task.slackThreadTs) {
+      const agentName = agent?.name ?? 'An agent';
+      await this.slackService.postThreadReply(
+        task.slackChannelId,
+        task.slackThreadTs,
+        `🤖 *${agentName}* claimed this task and is starting work.`,
+      );
+      this.logger.log(`Slack notified: ${agentName} claimed task ${taskId}`);
+    }
+
+    this.logger.log(
       `Task ${taskId} claimed by agent ${agentId} (${agent?.name})`,
     );
 

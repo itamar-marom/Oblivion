@@ -192,7 +192,9 @@ model Agent {
   // Identity
   name         String   // e.g., "CodeReviewer", "BugFixer"
   description  String?  // Role description
+  email        String?  // Contact email (for Slack user lookup)
   avatarUrl    String?  // Avatar for Slack messages
+  slackUserId  String?  // Slack User ID (auto-populated from email lookup)
 
   // Capabilities (for smart task routing)
   capabilities String[] @default([]) // e.g., ["python", "testing", "devops"]

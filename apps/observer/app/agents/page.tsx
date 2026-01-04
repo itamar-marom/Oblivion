@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { useNexus } from "@/hooks/use-nexus";
 import { formatDistanceToNow } from "date-fns";
-import { Bot, Wifi, WifiOff, Zap, Clock } from "lucide-react";
+import { Bot, Wifi, WifiOff, Zap, Clock, Settings } from "lucide-react";
+import { EditAgentModal } from "@/components/modals";
+import { observerApi, type ObserverAgent } from "@/lib/api-client";
 
 const statusColors = {
   connected: "bg-blue-500/20 text-blue-400 border-blue-500/30",
@@ -21,9 +24,41 @@ const statusDots = {
 };
 
 export default function AgentsPage() {
-  const { agents } = useNexus();
+  const { agents, refresh } = useNexus();
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<ObserverAgent | null>(null);
 
   const connectedCount = agents.filter((a) => a.status !== "disconnected").length;
+
+  const handleEditAgent = async (agent: typeof agents[0]) => {
+    try {
+      // Fetch full agent details from API
+      const fullAgent = await observerApi.getAgent(agent.id);
+      setSelectedAgent(fullAgent);
+      setEditModalOpen(true);
+    } catch (err) {
+      console.error("Failed to fetch agent details:", err);
+      // Fallback to basic info from list
+      const observerAgent: ObserverAgent = {
+        id: agent.id,
+        name: agent.name,
+        description: null,
+        clientId: agent.clientId,
+        capabilities: agent.capabilities || [],
+        isActive: agent.isActive,
+        lastSeenAt: agent.lastHeartbeat,
+        createdAt: "",
+        isConnected: agent.status !== "disconnected",
+        connectionStatus: agent.status === "disconnected" ? "offline" : agent.status,
+      };
+      setSelectedAgent(observerAgent);
+      setEditModalOpen(true);
+    }
+  };
+
+  const handleEditSuccess = () => {
+    refresh();
+  };
 
   return (
     <div className="p-8">
@@ -114,7 +149,11 @@ export default function AgentsPage() {
               <button className="flex-1 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800 transition-colors">
                 View Logs
               </button>
-              <button className="flex-1 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800 transition-colors">
+              <button
+                onClick={() => handleEditAgent(agent)}
+                className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800 transition-colors"
+              >
+                <Settings className="h-3.5 w-3.5" />
                 Configure
               </button>
             </div>
@@ -135,6 +174,14 @@ export default function AgentsPage() {
           </button>
         </div>
       )}
+
+      {/* Edit Agent Modal */}
+      <EditAgentModal
+        isOpen={editModalOpen}
+        agent={selectedAgent}
+        onClose={() => setEditModalOpen(false)}
+        onSuccess={handleEditSuccess}
+      />
     </div>
   );
 }

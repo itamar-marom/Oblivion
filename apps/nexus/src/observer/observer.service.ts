@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { UpdateAgentDto } from './dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService, AgentConnection } from '../gateway/redis.service';
 
@@ -37,6 +38,9 @@ export interface AgentWithStatus {
   name: string;
   description: string | null;
   clientId: string;
+  email: string | null;
+  avatarUrl: string | null;
+  slackUserId: string | null;
   capabilities: string[];
   isActive: boolean;
   lastSeenAt: Date | null;
@@ -144,6 +148,9 @@ export class ObserverService {
         name: agent.name,
         description: agent.description,
         clientId: agent.clientId,
+        email: agent.email,
+        avatarUrl: agent.avatarUrl,
+        slackUserId: agent.slackUserId,
         capabilities: agent.capabilities as string[],
         isActive: agent.isActive,
         lastSeenAt: agent.lastSeenAt,
@@ -153,6 +160,96 @@ export class ObserverService {
         connectedAt: conn?.connectedAt,
       };
     });
+  }
+
+  /**
+   * Get a single agent by ID with connection status.
+   */
+  async getAgent(tenantId: string, agentId: string): Promise<AgentWithStatus> {
+    const agent = await this.prisma.agent.findFirst({
+      where: { id: agentId, tenantId },
+    });
+
+    if (!agent) {
+      throw new NotFoundException('Agent not found');
+    }
+
+    // Get connection status from Redis
+    const socketId = await this.redisService.getSocketIdForAgent(agentId);
+    let conn: AgentConnection | null = null;
+    if (socketId) {
+      conn = await this.redisService.getConnectionBySocket(socketId);
+    }
+
+    return {
+      id: agent.id,
+      name: agent.name,
+      description: agent.description,
+      clientId: agent.clientId,
+      email: agent.email,
+      avatarUrl: agent.avatarUrl,
+      slackUserId: agent.slackUserId,
+      capabilities: agent.capabilities as string[],
+      isActive: agent.isActive,
+      lastSeenAt: agent.lastSeenAt,
+      createdAt: agent.createdAt,
+      isConnected: !!conn,
+      connectionStatus: conn?.status || 'offline',
+      connectedAt: conn?.connectedAt,
+    };
+  }
+
+  /**
+   * Update an agent's profile.
+   */
+  async updateAgent(tenantId: string, agentId: string, dto: UpdateAgentDto): Promise<AgentWithStatus> {
+    // Verify agent exists and belongs to tenant
+    const existing = await this.prisma.agent.findFirst({
+      where: { id: agentId, tenantId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Agent not found');
+    }
+
+    // Update the agent
+    const agent = await this.prisma.agent.update({
+      where: { id: agentId },
+      data: {
+        ...(dto.name && { name: dto.name }),
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.email !== undefined && { email: dto.email }),
+        ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
+        ...(dto.slackUserId !== undefined && { slackUserId: dto.slackUserId }),
+        ...(dto.capabilities && { capabilities: dto.capabilities }),
+      },
+    });
+
+    this.logger.log(`Agent "${agent.name}" updated by Observer`);
+
+    // Get connection status from Redis
+    const socketId = await this.redisService.getSocketIdForAgent(agentId);
+    let conn: AgentConnection | null = null;
+    if (socketId) {
+      conn = await this.redisService.getConnectionBySocket(socketId);
+    }
+
+    return {
+      id: agent.id,
+      name: agent.name,
+      description: agent.description,
+      clientId: agent.clientId,
+      email: agent.email,
+      avatarUrl: agent.avatarUrl,
+      slackUserId: agent.slackUserId,
+      capabilities: agent.capabilities as string[],
+      isActive: agent.isActive,
+      lastSeenAt: agent.lastSeenAt,
+      createdAt: agent.createdAt,
+      isConnected: !!conn,
+      connectionStatus: conn?.status || 'offline',
+      connectedAt: conn?.connectedAt,
+    };
   }
 
   /**
