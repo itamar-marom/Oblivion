@@ -446,6 +446,46 @@ export class SlackService {
   }
 
   /**
+   * Post a simple message to a channel (creates a new thread root)
+   *
+   * @param channelId - Slack channel ID
+   * @param text - Message text (supports mrkdwn)
+   * @returns Message result with messageTs for future thread replies, or null on failure
+   */
+  async postMessage(channelId: string, text: string): Promise<SlackMessageResult | null> {
+    if (!this.isConfigured()) {
+      this.logger.warn('Slack bot token not configured');
+      return null;
+    }
+
+    try {
+      const result = await this.client.chat.postMessage({
+        channel: channelId,
+        text,
+        unfurl_links: false,
+        unfurl_media: false,
+      });
+
+      if (!result.ok || !result.ts) {
+        this.logger.error(`Failed to post message: ${result.error}`);
+        return null;
+      }
+
+      this.logger.log(`Message posted to ${channelId}, ts: ${result.ts}`);
+
+      return {
+        ok: true,
+        channelId: result.channel || channelId,
+        threadTs: result.ts,
+        messageTs: result.ts,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to post message: ${error}`);
+      return null;
+    }
+  }
+
+  /**
    * Post a reply to an existing thread
    *
    * @param channelId - Slack channel ID

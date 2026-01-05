@@ -70,8 +70,8 @@ export class ProjectsService {
       }
     }
 
-    // Create Slack channel for the project
-    const channelName = `oblivion-${dto.slug}`;
+    // Create Slack channel for the project (naming: oblivion-{group-slug}_{project-slug})
+    const channelName = `oblivion-${group.slug}_${dto.slug}`;
     let slackChannelId: string | null = null;
 
     const slackResult = await this.slackService.createChannel(channelName);

@@ -443,6 +443,7 @@ export class TasksService implements OnModuleInit {
   /**
    * Post a message to a task's Slack thread.
    * Only the agent who claimed the task can post to its thread.
+   * If the task doesn't have a Slack thread yet, creates one in the project's channel.
    */
   async postToSlackThread(
     agentId: string,
@@ -455,6 +456,7 @@ export class TasksService implements OnModuleInit {
       where: { id: taskId },
       include: {
         claimedByAgent: { select: { id: true, name: true } },
+        project: { select: { slackChannelId: true, name: true } },
       },
     });
 
@@ -463,6 +465,7 @@ export class TasksService implements OnModuleInit {
         where: { clickupTaskId: taskId },
         include: {
           claimedByAgent: { select: { id: true, name: true } },
+          project: { select: { slackChannelId: true, name: true } },
         },
       });
     }
@@ -476,15 +479,44 @@ export class TasksService implements OnModuleInit {
       throw new ForbiddenException('Only the agent who claimed this task can post to its Slack thread');
     }
 
-    // Check if task has Slack thread info
-    if (!task.slackChannelId || !task.slackThreadTs) {
-      throw new NotFoundException('Task does not have a Slack thread');
+    // Determine channel to use (task's channel or project's channel)
+    const channelId = task.slackChannelId || task.project?.slackChannelId;
+
+    if (!channelId) {
+      throw new NotFoundException('No Slack channel configured for this task or project');
+    }
+
+    let threadTs = task.slackThreadTs;
+
+    // If no thread exists, create one with a root message
+    if (!threadTs) {
+      this.logger.log(`Creating new Slack thread for task ${taskId}`);
+
+      const rootMessage = `📋 *Task:* ${task.title || `Task ${task.clickupTaskId}`}\n🤖 Agent *${task.claimedByAgent?.name}* is working on this task.`;
+      const rootResult = await this.slackService.postMessage(channelId, rootMessage);
+
+      if (!rootResult) {
+        throw new Error('Failed to create Slack thread');
+      }
+
+      threadTs = rootResult.messageTs;
+
+      // Save thread info to the task
+      await this.prisma.task.update({
+        where: { id: task.id },
+        data: {
+          slackChannelId: channelId,
+          slackThreadTs: threadTs,
+        },
+      });
+
+      this.logger.log(`Created Slack thread for task ${taskId}: ${threadTs}`);
     }
 
     // Post to Slack thread
     const result = await this.slackService.postThreadReply(
-      task.slackChannelId,
-      task.slackThreadTs,
+      channelId,
+      threadTs,
       message,
       { broadcast },
     );

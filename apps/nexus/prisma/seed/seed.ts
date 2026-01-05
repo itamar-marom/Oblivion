@@ -2,7 +2,70 @@ import { PrismaClient, TaskStatus } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
+import { WebClient } from '@slack/web-api';
 import 'dotenv/config';
+
+// Slack client for channel creation
+const slackToken = process.env.SLACK_BOT_TOKEN;
+const slack = slackToken ? new WebClient(slackToken) : null;
+
+/**
+ * Create or find a Slack channel by name.
+ * Returns the channel ID or null if Slack is not configured.
+ */
+async function createOrFindSlackChannel(name: string): Promise<string | null> {
+  if (!slack) {
+    console.log(`  ⚠️  Slack not configured, skipping channel: ${name}`);
+    return null;
+  }
+
+  // Sanitize channel name
+  const sanitizedName = name
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-_]/g, '')
+    .substring(0, 80);
+
+  try {
+    // Try to create the channel
+    const result = await slack.conversations.create({
+      name: sanitizedName,
+      is_private: false,
+    });
+
+    if (result.ok && result.channel?.id) {
+      console.log(`  ✅ Created Slack channel: #${sanitizedName}`);
+      return result.channel.id;
+    }
+  } catch (error: unknown) {
+    const slackError = error as { data?: { error?: string } };
+    // Channel already exists - find it
+    if (slackError.data?.error === 'name_taken') {
+      try {
+        let cursor: string | undefined;
+        do {
+          const list = await slack.conversations.list({
+            types: 'public_channel',
+            limit: 200,
+            cursor,
+          });
+          const channel = list.channels?.find((c) => c.name === sanitizedName);
+          if (channel?.id) {
+            console.log(`  ✅ Found existing Slack channel: #${sanitizedName}`);
+            return channel.id;
+          }
+          cursor = list.response_metadata?.next_cursor;
+        } while (cursor);
+      } catch {
+        console.log(`  ⚠️  Could not find channel: ${sanitizedName}`);
+      }
+    } else {
+      console.log(`  ⚠️  Failed to create channel ${sanitizedName}: ${slackError.data?.error}`);
+    }
+  }
+
+  return null;
+}
 
 // Prisma 7 requires a driver adapter
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -92,25 +155,31 @@ async function main() {
   ]);
   console.log(`✅ Created ${agents.length} agents`);
 
-  // Create groups
+  // Create groups with Slack channels
+  console.log('\n📢 Creating groups with Slack channels...');
+
+  const backendTeamChannelId = await createOrFindSlackChannel('oblivion-group-backend-team');
   const backendTeam = await prisma.group.create({
     data: {
       tenantId: tenant.id,
       name: 'Backend Team',
       slug: 'backend-team',
       description: 'Handles all backend services and APIs',
-      slackChannelName: '#oblivion-backend-team',
+      slackChannelId: backendTeamChannelId,
+      slackChannelName: '#oblivion-group-backend-team',
       isActive: true,
     },
   });
 
+  const frontendTeamChannelId = await createOrFindSlackChannel('oblivion-group-frontend-team');
   const frontendTeam = await prisma.group.create({
     data: {
       tenantId: tenant.id,
       name: 'Frontend Team',
       slug: 'frontend-team',
       description: 'Handles all UI/UX and frontend applications',
-      slackChannelName: '#oblivion-frontend-team',
+      slackChannelId: frontendTeamChannelId,
+      slackChannelName: '#oblivion-group-frontend-team',
       isActive: true,
     },
   });
@@ -129,7 +198,10 @@ async function main() {
   });
   console.log(`✅ Created 5 group memberships`);
 
-  // Create projects
+  // Create projects with Slack channels
+  console.log('\n📢 Creating projects with Slack channels...');
+
+  const authChannelId = await createOrFindSlackChannel('oblivion-backend-team_auth-refactor');
   const authProject = await prisma.project.create({
     data: {
       groupId: backendTeam.id,
@@ -138,11 +210,13 @@ async function main() {
       slug: 'auth-refactor',
       description: 'Refactoring the authentication system to use JWT',
       oblivionTag: 'auth-refactor',
-      slackChannelName: '#oblivion-auth-refactor',
+      slackChannelId: authChannelId,
+      slackChannelName: '#oblivion-backend-team_auth-refactor',
       isActive: true,
     },
   });
 
+  const apiChannelId = await createOrFindSlackChannel('oblivion-backend-team_api-v2');
   const apiProject = await prisma.project.create({
     data: {
       groupId: backendTeam.id,
@@ -151,11 +225,13 @@ async function main() {
       slug: 'api-v2',
       description: 'Building the next version of the public API',
       oblivionTag: 'api-v2',
-      slackChannelName: '#oblivion-api-v2',
+      slackChannelId: apiChannelId,
+      slackChannelName: '#oblivion-backend-team_api-v2',
       isActive: true,
     },
   });
 
+  const dashboardChannelId = await createOrFindSlackChannel('oblivion-frontend-team_dashboard-redesign');
   const dashboardProject = await prisma.project.create({
     data: {
       groupId: frontendTeam.id,
@@ -164,7 +240,8 @@ async function main() {
       slug: 'dashboard-redesign',
       description: 'Modernizing the user dashboard UI',
       oblivionTag: 'dashboard',
-      slackChannelName: '#oblivion-dashboard',
+      slackChannelId: dashboardChannelId,
+      slackChannelName: '#oblivion-frontend-team_dashboard-redesign',
       isActive: true,
     },
   });

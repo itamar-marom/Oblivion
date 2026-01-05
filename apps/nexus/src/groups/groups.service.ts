@@ -44,8 +44,8 @@ export class GroupsService {
       throw new ConflictException(`Group with slug "${dto.slug}" already exists`);
     }
 
-    // Create Slack channel
-    const channelName = `oblivion-${dto.slug}`;
+    // Create Slack channel (naming: oblivion-group-{slug})
+    const channelName = `oblivion-group-${dto.slug}`;
     let slackChannelId: string | null = null;
 
     const slackResult = await this.slackService.createChannel(channelName);
