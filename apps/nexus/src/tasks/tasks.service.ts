@@ -419,6 +419,90 @@ export class TasksService implements OnModuleInit {
   }
 
   /**
+   * Find task by internal ID.
+   */
+  async findById(taskId: string) {
+    return this.prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        project: {
+          include: {
+            group: true,
+          },
+        },
+        claimedByAgent: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Post a message to a task's Slack thread.
+   * Only the agent who claimed the task can post to its thread.
+   */
+  async postToSlackThread(
+    agentId: string,
+    taskId: string,
+    message: string,
+    broadcast?: boolean,
+  ) {
+    // Find task by ID (try internal ID first, then ClickUp ID)
+    let task = await this.prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        claimedByAgent: { select: { id: true, name: true } },
+      },
+    });
+
+    if (!task) {
+      task = await this.prisma.task.findUnique({
+        where: { clickupTaskId: taskId },
+        include: {
+          claimedByAgent: { select: { id: true, name: true } },
+        },
+      });
+    }
+
+    if (!task) {
+      throw new NotFoundException('Task not found');
+    }
+
+    // Verify the agent has claimed this task
+    if (task.claimedByAgentId !== agentId) {
+      throw new ForbiddenException('Only the agent who claimed this task can post to its Slack thread');
+    }
+
+    // Check if task has Slack thread info
+    if (!task.slackChannelId || !task.slackThreadTs) {
+      throw new NotFoundException('Task does not have a Slack thread');
+    }
+
+    // Post to Slack thread
+    const result = await this.slackService.postThreadReply(
+      task.slackChannelId,
+      task.slackThreadTs,
+      message,
+      { broadcast },
+    );
+
+    if (!result) {
+      throw new Error('Failed to post to Slack');
+    }
+
+    this.logger.log(`Agent ${agentId} posted to Slack thread for task ${taskId}`);
+
+    return {
+      ok: true,
+      channelId: result.channelId,
+      messageTs: result.messageTs,
+    };
+  }
+
+  /**
    * Sync task status from ClickUp webhook.
    *
    * Maps ClickUp status to internal status and updates the task.

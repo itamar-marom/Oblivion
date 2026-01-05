@@ -11,7 +11,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { TasksService } from './tasks.service';
-import { UpdateTaskStatusDto } from './dto';
+import { UpdateTaskStatusDto, PostSlackReplyDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 /**
@@ -75,5 +75,32 @@ export class TasksController {
   @Get(':id')
   async getTask(@Param('id') taskId: string) {
     return this.tasksService.findByClickupId(taskId);
+  }
+
+  /**
+   * Get a specific task by internal ID.
+   */
+  @Get('by-id/:id')
+  async getTaskById(@Param('id') taskId: string) {
+    return this.tasksService.findById(taskId);
+  }
+
+  /**
+   * Post a message to a task's Slack thread.
+   * Only the agent who claimed the task can post to its thread.
+   */
+  @Post(':id/slack-reply')
+  @HttpCode(HttpStatus.OK)
+  async postSlackReply(
+    @Request() req,
+    @Param('id') taskId: string,
+    @Body() dto: PostSlackReplyDto,
+  ) {
+    return this.tasksService.postToSlackThread(
+      req.user.id,
+      taskId,
+      dto.message,
+      dto.broadcast,
+    );
   }
 }

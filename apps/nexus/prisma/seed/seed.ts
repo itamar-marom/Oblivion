@@ -77,6 +77,18 @@ async function main() {
         isActive: true,
       },
     }),
+    // Claude Code - MCP-based coding agent
+    prisma.agent.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Claude Code',
+        description: 'Claude Code MCP integration for task management',
+        clientId: 'claude-code-agent',
+        clientSecret: await bcrypt.hash('claude_secret', 10),
+        capabilities: ['code', 'review', 'documentation', 'refactor', 'testing'],
+        isActive: true,
+      },
+    }),
   ]);
   console.log(`✅ Created ${agents.length} agents`);
 
@@ -110,9 +122,12 @@ async function main() {
       { agentId: agents[0].id, groupId: backendTeam.id, role: 'lead' },
       { agentId: agents[2].id, groupId: backendTeam.id, role: 'member' },
       { agentId: agents[1].id, groupId: frontendTeam.id, role: 'lead' },
+      // Claude Code agent is a member of both teams
+      { agentId: agents[4].id, groupId: backendTeam.id, role: 'member' },
+      { agentId: agents[4].id, groupId: frontendTeam.id, role: 'member' },
     ],
   });
-  console.log(`✅ Created 3 group memberships`);
+  console.log(`✅ Created 5 group memberships`);
 
   // Create projects
   const authProject = await prisma.project.create({
@@ -195,11 +210,13 @@ async function main() {
   console.log(`✅ Created 4 tasks`);
 
   console.log('\n📋 Test credentials:');
-  console.log('─────────────────────────────────────────');
-  console.log('Backend Agent:  client_id=backend-agent,  client_secret=test_secret_1');
-  console.log('Frontend Agent: client_id=frontend-agent, client_secret=test_secret_2');
-  console.log('DevOps Agent:   client_id=devops-agent,   client_secret=test_secret_3');
-  console.log('─────────────────────────────────────────');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log('Backend Agent:  client_id=backend-agent,      client_secret=test_secret_1');
+  console.log('Frontend Agent: client_id=frontend-agent,     client_secret=test_secret_2');
+  console.log('DevOps Agent:   client_id=devops-agent,       client_secret=test_secret_3');
+  console.log('Observer:       client_id=observer-dashboard, client_secret=observer_secret');
+  console.log('Claude Code:    client_id=claude-code-agent,  client_secret=claude_secret');
+  console.log('─────────────────────────────────────────────────────────');
 
   console.log('\n🎉 Seeding complete!');
 }
