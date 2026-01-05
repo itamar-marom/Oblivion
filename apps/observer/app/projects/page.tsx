@@ -193,7 +193,7 @@ export default function ProjectsPage() {
                   {project.slackChannelName ? (
                     <div className="flex items-center gap-2 text-sm text-zinc-400">
                       <Hash className="h-4 w-4" />
-                      <span>{project.slackChannelName}</span>
+                      <span>{project.slackChannelName.replace(/^#/, '')}</span>
                     </div>
                   ) : (
                     <span className="text-zinc-500 text-sm">-</span>

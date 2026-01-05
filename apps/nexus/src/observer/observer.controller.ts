@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Param,
   Body,
@@ -10,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ObserverService } from './observer.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { UpdateAgentDto } from './dto';
+import { CreateAgentDto, UpdateAgentDto } from './dto';
 
 /**
  * Observer Controller.
@@ -58,6 +59,17 @@ export class ObserverController {
   @Get('agents')
   async getAgents(@Request() req) {
     return this.observerService.getAgents(req.user.tenantId);
+  }
+
+  /**
+   * Create a new agent.
+   *
+   * Required fields: name, clientId, clientSecret
+   * Optional fields: description, capabilities
+   */
+  @Post('agents')
+  async createAgent(@Request() req, @Body() dto: CreateAgentDto) {
+    return this.observerService.createAgent(req.user.tenantId, dto);
   }
 
   /**

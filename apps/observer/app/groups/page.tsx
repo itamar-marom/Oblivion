@@ -142,7 +142,7 @@ export default function GroupsPage() {
             {group.slackChannelName && (
               <div className="mb-4 flex items-center gap-2 rounded-lg bg-zinc-800/50 px-3 py-2 text-sm">
                 <Hash className="h-4 w-4 text-zinc-500" />
-                <span className="text-zinc-300">{group.slackChannelName}</span>
+                <span className="text-zinc-300">{group.slackChannelName.replace(/^#/, '')}</span>
               </div>
             )}
 

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useNexus } from "@/hooks/use-nexus";
 import { formatDistanceToNow } from "date-fns";
 import { Bot, Wifi, WifiOff, Zap, Clock, Settings } from "lucide-react";
-import { EditAgentModal } from "@/components/modals";
+import { CreateAgentModal, EditAgentModal } from "@/components/modals";
 import { observerApi, type ObserverAgent } from "@/lib/api-client";
 
 const statusColors = {
@@ -25,6 +25,7 @@ const statusDots = {
 
 export default function AgentsPage() {
   const { agents, refresh } = useNexus();
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<ObserverAgent | null>(null);
 
@@ -70,7 +71,10 @@ export default function AgentsPage() {
             {connectedCount} of {agents.length} agents connected
           </p>
         </div>
-        <button className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium hover:bg-cyan-700 transition-colors">
+        <button
+          onClick={() => setCreateModalOpen(true)}
+          className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium hover:bg-cyan-700 transition-colors"
+        >
           Register New Agent
         </button>
       </div>
@@ -169,11 +173,21 @@ export default function AgentsPage() {
           <p className="text-zinc-500 text-center mb-4">
             Register your first AI agent to start automating tasks
           </p>
-          <button className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium hover:bg-cyan-700 transition-colors">
+          <button
+            onClick={() => setCreateModalOpen(true)}
+            className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium hover:bg-cyan-700 transition-colors"
+          >
             Register Agent
           </button>
         </div>
       )}
+
+      {/* Create Agent Modal */}
+      <CreateAgentModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onSuccess={refresh}
+      />
 
       {/* Edit Agent Modal */}
       <EditAgentModal

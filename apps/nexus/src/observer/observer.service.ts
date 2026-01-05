@@ -1,5 +1,6 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { UpdateAgentDto } from './dto';
+import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
+import { CreateAgentDto, UpdateAgentDto } from './dto';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService, AgentConnection } from '../gateway/redis.service';
 
@@ -247,6 +248,54 @@ export class ObserverService {
       isConnected,
       connectionStatus,
       connectedAt: conn?.connectedAt,
+    };
+  }
+
+  /**
+   * Create a new agent.
+   */
+  async createAgent(tenantId: string, dto: CreateAgentDto): Promise<AgentWithStatus> {
+    // Check if clientId already exists for this tenant
+    const existing = await this.prisma.agent.findFirst({
+      where: { tenantId, clientId: dto.clientId },
+    });
+
+    if (existing) {
+      throw new ConflictException(`Agent with clientId "${dto.clientId}" already exists`);
+    }
+
+    // Hash the client secret
+    const hashedSecret = await bcrypt.hash(dto.clientSecret, 10);
+
+    // Create the agent
+    const agent = await this.prisma.agent.create({
+      data: {
+        tenantId,
+        name: dto.name,
+        clientId: dto.clientId,
+        clientSecret: hashedSecret,
+        description: dto.description || null,
+        capabilities: dto.capabilities || [],
+        isActive: true,
+      },
+    });
+
+    this.logger.log(`Agent "${agent.name}" (${agent.clientId}) created via Observer`);
+
+    return {
+      id: agent.id,
+      name: agent.name,
+      description: agent.description,
+      clientId: agent.clientId,
+      email: agent.email,
+      avatarUrl: agent.avatarUrl,
+      slackUserId: agent.slackUserId,
+      capabilities: agent.capabilities as string[],
+      isActive: agent.isActive,
+      lastSeenAt: agent.lastSeenAt,
+      createdAt: agent.createdAt,
+      isConnected: false,
+      connectionStatus: 'offline',
     };
   }
 

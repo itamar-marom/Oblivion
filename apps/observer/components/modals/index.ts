@@ -1,3 +1,4 @@
+export { CreateAgentModal } from "./create-agent-modal";
 export { CreateGroupModal } from "./create-group-modal";
 export { CreateProjectModal } from "./create-project-modal";
 export { EditAgentModal } from "./edit-agent-modal";
