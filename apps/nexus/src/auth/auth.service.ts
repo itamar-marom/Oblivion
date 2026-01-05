@@ -87,6 +87,7 @@ export class AuthService {
   /**
    * Validate JWT payload and return agent info.
    * Used by JwtStrategy to attach user to request.
+   * Also updates lastSeenAt to track agent activity.
    */
   async validateJwtPayload(payload: JwtPayload) {
     const agent = await this.prisma.agent.findUnique({
@@ -97,6 +98,14 @@ export class AuthService {
     if (!agent || !agent.isActive) {
       throw new UnauthorizedException('Agent not found or disabled');
     }
+
+    // Update lastSeenAt on every authenticated request (fire and forget)
+    this.prisma.agent.update({
+      where: { id: agent.id },
+      data: { lastSeenAt: new Date() },
+    }).catch(() => {
+      // Ignore errors - this is best-effort tracking
+    });
 
     return {
       id: agent.id,

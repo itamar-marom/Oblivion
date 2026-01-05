@@ -25,6 +25,24 @@ Oblivion does not replace your tools; it mirrors state between them.
 
 When a task updates in ClickUp, Oblivion wakes the relevant Agent. When the Agent speaks in Slack, Oblivion syncs the summary back to ClickUp.
 
+### 1.3 What Nexus is NOT
+
+To maintain focus and avoid scope creep, Nexus explicitly does **not** attempt to:
+
+| ❌ Nexus Does NOT | ✅ Instead |
+|:---|:---|
+| Replace task managers (ClickUp, Jira, Linear) | Integrates with them as the source of truth |
+| Store task content long-term | Syncs minimal metadata for routing/coordination |
+| Provide a UI for humans to manage tasks | Humans use their existing PM tools |
+| Compete with Slack for communication | Uses Slack as the human-agent communication channel |
+| Execute tools on behalf of agents | Agents run tools locally with their own credentials |
+
+**Nexus's value is in the orchestration layer:**
+1. **Routing** - Get the right task to the right agent
+2. **Communication Bridge** - Connect humans (Slack) with agents working on tasks
+3. **Observability** - Dashboard to monitor agent activity and task progress
+4. **Coordination** - Prevent conflicts (e.g., two agents claiming the same task)
+
 ---
 
 ## 2. Core Architecture

@@ -51,6 +51,9 @@ export interface AgentWithStatus {
   connectedAt?: string;
 }
 
+// Agents seen within this threshold are considered "online"
+const ONLINE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
 /**
  * Observer Service.
  *
@@ -72,9 +75,13 @@ export class ObserverService {
    * Get dashboard statistics for a tenant.
    */
   async getStats(tenantId: string): Promise<DashboardStats> {
+    // Calculate threshold for "recently seen"
+    const recentThreshold = new Date(Date.now() - ONLINE_THRESHOLD_MS);
+
     // Run queries in parallel
     const [
       connectedAgentIds,
+      recentlySeenCount,
       totalAgents,
       activeTasks,
       pendingTasks,
@@ -82,6 +89,14 @@ export class ObserverService {
       totalProjects,
     ] = await Promise.all([
       this.redisService.getConnectedAgentsForTenant(tenantId),
+      // Count agents seen via REST API recently
+      this.prisma.agent.count({
+        where: {
+          tenantId,
+          isActive: true,
+          lastSeenAt: { gte: recentThreshold },
+        },
+      }),
       this.prisma.agent.count({
         where: { tenantId, isActive: true },
       }),
@@ -105,8 +120,12 @@ export class ObserverService {
       }),
     ]);
 
+    // Connected = WebSocket connected OR recently seen via API
+    // Use max to avoid double-counting (some might be in both)
+    const connectedAgents = Math.max(connectedAgentIds.length, recentlySeenCount);
+
     return {
-      connectedAgents: connectedAgentIds.length,
+      connectedAgents,
       totalAgents,
       activeTasks,
       pendingTasks,
@@ -143,6 +162,23 @@ export class ObserverService {
 
     return agents.map((agent) => {
       const conn = connectionInfo.get(agent.id);
+      const hasWebSocket = connectedSet.has(agent.id);
+
+      // Check if agent was seen recently via REST API
+      const recentlySeenViaApi = !!(agent.lastSeenAt &&
+        (Date.now() - agent.lastSeenAt.getTime()) < ONLINE_THRESHOLD_MS);
+
+      // Agent is connected if they have WebSocket OR were recently seen via API
+      const isConnected = hasWebSocket || recentlySeenViaApi;
+
+      // Determine connection status
+      let connectionStatus: AgentConnection['status'] | 'offline' = 'offline';
+      if (conn?.status) {
+        connectionStatus = conn.status;
+      } else if (recentlySeenViaApi) {
+        connectionStatus = 'connected'; // REST API activity counts as connected
+      }
+
       return {
         id: agent.id,
         name: agent.name,
@@ -155,8 +191,8 @@ export class ObserverService {
         isActive: agent.isActive,
         lastSeenAt: agent.lastSeenAt,
         createdAt: agent.createdAt,
-        isConnected: connectedSet.has(agent.id),
-        connectionStatus: conn?.status || 'offline',
+        isConnected,
+        connectionStatus,
         connectedAt: conn?.connectedAt,
       };
     });
@@ -181,6 +217,21 @@ export class ObserverService {
       conn = await this.redisService.getConnectionBySocket(socketId);
     }
 
+    // Check if agent was seen recently via REST API
+    const recentlySeenViaApi = !!(agent.lastSeenAt &&
+      (Date.now() - agent.lastSeenAt.getTime()) < ONLINE_THRESHOLD_MS);
+
+    // Agent is connected if they have WebSocket OR were recently seen via API
+    const isConnected = !!conn || recentlySeenViaApi;
+
+    // Determine connection status
+    let connectionStatus: AgentConnection['status'] | 'offline' = 'offline';
+    if (conn?.status) {
+      connectionStatus = conn.status;
+    } else if (recentlySeenViaApi) {
+      connectionStatus = 'connected';
+    }
+
     return {
       id: agent.id,
       name: agent.name,
@@ -193,8 +244,8 @@ export class ObserverService {
       isActive: agent.isActive,
       lastSeenAt: agent.lastSeenAt,
       createdAt: agent.createdAt,
-      isConnected: !!conn,
-      connectionStatus: conn?.status || 'offline',
+      isConnected,
+      connectionStatus,
       connectedAt: conn?.connectedAt,
     };
   }
