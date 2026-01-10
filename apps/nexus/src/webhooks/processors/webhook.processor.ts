@@ -217,6 +217,10 @@ export class WebhookProcessor extends WorkerHost {
         taskInfo.slackChannelId,
         taskInfo.slackThreadTs,
         `📊 *Status updated:* ${clickupStatus}`,
+        {
+          username: 'ClickUp',
+          iconEmoji: ':clipboard:',
+        },
       );
     }
 
@@ -283,13 +287,17 @@ export class WebhookProcessor extends WorkerHost {
       const author = commentItem.user?.username || 'Unknown';
       const content = commentItem.comment.text_content || commentItem.comment.comment_text || '';
 
-      // Post comment to Slack thread
+      // Post comment to Slack thread as the ClickUp user
       if (task.slackChannelId && task.slackThreadTs) {
         const formattedComment = this.slackService.formatCommentForSlack(author, content);
         await this.slackService.postThreadReply(
           task.slackChannelId,
           task.slackThreadTs,
           formattedComment,
+          {
+            username: `ClickUp: ${author}`,
+            iconEmoji: ':memo:',
+          },
         );
         this.logger.log(`Comment synced to Slack thread ${task.slackThreadTs}`);
       }

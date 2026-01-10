@@ -2,11 +2,13 @@
  * Agent Registration Tools
  *
  * MCP tools for self-service agent registration with Nexus.
+ * Automatically saves credentials after successful registration.
  */
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { NexusClient } from '../nexus-client.js';
+import { saveCredentials, clearCredentials, listProfiles } from '../credentials-manager.js';
 
 /**
  * Register registration-related tools with the MCP server
@@ -68,6 +70,20 @@ export function registerRegistrationTools(server: McpServer, nexus: NexusClient)
           capabilities,
         });
 
+        // Save credentials to disk for future use
+        // Get NEXUS_URL from env (required for MCP to be running)
+        const nexusUrl = process.env.NEXUS_URL;
+        if (nexusUrl) {
+          saveCredentials({
+            nexusUrl,
+            clientId,
+            clientSecret,
+            agentId: result.id,
+            agentName: result.name,
+            savedAt: new Date().toISOString(),
+          });
+        }
+
         const sections = [
           '## Agent Registration Submitted',
           '',
@@ -96,17 +112,22 @@ export function registerRegistrationTools(server: McpServer, nexus: NexusClient)
           '',
           result.message,
           '',
-          '**Important:** Save your credentials securely:',
-          `- Client ID: \`${result.clientId}\``,
-          `- Client Secret: (the one you provided)`,
+          '✅ **Credentials automatically saved!**',
+          `- File: \`~/.oblivion/credentials.json\``,
+          `- Profile: \`${result.clientId}\` (active)`,
           '',
-          'Once approved, use these credentials to authenticate with:',
-          '```',
-          'POST /auth/token',
-          '{ "client_id": "' + result.clientId + '", "client_secret": "YOUR_SECRET" }',
+          '**Multiple agents on same host?** No problem!',
+          'Each agent registration creates a new profile. Switch between them using:',
+          '```bash',
+          `claude mcp update oblivion --env OBLIVION_PROFILE=${result.clientId}`,
           '```',
           '',
-          'Use `check_registration_status` to check if your registration has been approved.'
+          '**After admin approval:**',
+          '1. Use `check_registration_status` to verify approval',
+          '2. Restart Claude Code (credentials auto-load)',
+          '3. All tools work automatically - no config edits needed!',
+          '',
+          'Your credentials are securely stored (600 permissions, owner-only access).'
         );
 
         return {
@@ -177,6 +198,96 @@ export function registerRegistrationTools(server: McpServer, nexus: NexusClient)
                 '- Invalid credentials\n' +
                 '- Agent not found\n' +
                 '- Agent has been deactivated',
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // =========================================================================
+  // deregister_agent
+  // =========================================================================
+  server.tool(
+    'deregister_agent',
+    'Remove saved agent credentials from this machine. Use this to switch agents or clean up after testing. ' +
+      'Does not delete the agent from Nexus - only removes local credentials.',
+    {
+      profile: z.string().optional().describe('Profile name to remove (defaults to current/active profile). Use "all" to remove all profiles.'),
+    },
+    async ({ profile }) => {
+      try {
+        const profiles = listProfiles();
+
+        if (profiles.length === 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: '## No Saved Credentials\n\n' +
+                  'No agent profiles found in `~/.oblivion/credentials.json`.\n\n' +
+                  'Use `register_agent` to create a new profile.',
+              },
+            ],
+          };
+        }
+
+        if (profile === 'all') {
+          // Clear all profiles
+          clearCredentials();
+          return {
+            content: [
+              {
+                type: 'text',
+                text: '## All Credentials Removed\n\n' +
+                  `Removed ${profiles.length} profile(s) from \`~/.oblivion/credentials.json\`:\n` +
+                  profiles.map(p => `- \`${p}\``).join('\n') + '\n\n' +
+                  '**Next steps:**\n' +
+                  '1. Use `register_agent` to register a new agent\n' +
+                  '2. Or manually configure credentials via Claude Code MCP settings',
+              },
+            ],
+          };
+        }
+
+        // Clear specific profile (or active if not specified)
+        const success = clearCredentials(profile);
+
+        if (success) {
+          const remaining = listProfiles();
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `## Profile Removed\n\n` +
+                  `Removed profile: \`${profile || 'active'}\`\n\n` +
+                  (remaining.length > 0
+                    ? `**Remaining profiles:**\n${remaining.map(p => `- \`${p}\``).join('\n')}\n\n` +
+                      'Restart Claude Code to use a different profile.'
+                    : '**No profiles remaining.**\n\nUse `register_agent` to create a new one.'),
+              },
+            ],
+          };
+        } else {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `## Profile Not Found\n\n` +
+                  `Profile \`${profile}\` does not exist.\n\n` +
+                  `**Available profiles:**\n${profiles.map(p => `- \`${p}\``).join('\n')}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `## Deregister Failed\n\n${error instanceof Error ? error.message : String(error)}`,
             },
           ],
           isError: true,

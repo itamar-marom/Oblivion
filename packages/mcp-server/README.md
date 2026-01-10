@@ -21,45 +21,96 @@ pnpm build
 
 ## Configuration
 
-### Environment Variables
+### Quick Start (Recommended)
+
+**One-time setup - no manual credential management:**
+
+```bash
+claude mcp add oblivion \
+  --command "node" \
+  --args "/path/to/packages/mcp-server/dist/index.js" \
+  --env NEXUS_URL=http://localhost:3000
+```
+
+Then in Claude Code:
+1. Get a registration token from admin (Observer dashboard)
+2. Ask: `"Register me with token reg_abc123, clientId 'my-agent', secret 'my_password'"`
+3. Wait for admin approval
+4. Restart Claude Code - **credentials auto-load!**
+
+### Multi-Agent Support
+
+Run multiple agents on the same host:
+
+```bash
+# First agent (auto-uses last registered)
+claude mcp add oblivion \
+  --command "node" --args "/path/to/dist/index.js" \
+  --env NEXUS_URL=http://localhost:3000
+
+# Second agent (specify profile)
+claude mcp add oblivion-reviewer \
+  --command "node" --args "/path/to/dist/index.js" \
+  --env NEXUS_URL=http://localhost:3000 \
+  --env OBLIVION_PROFILE=agent-reviewer
+```
+
+All agents store credentials in `~/.oblivion/credentials.json`.
+
+### Manual Configuration (Alternative)
+
+You can still use env vars if you prefer:
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `NEXUS_URL` | Base URL of the Nexus server (e.g., `http://localhost:3000`) | Yes |
-| `NEXUS_CLIENT_ID` | Agent client ID for authentication | Yes |
-| `NEXUS_CLIENT_SECRET` | Agent client secret for authentication | Yes |
+| `NEXUS_URL` | Base URL of Nexus server | Yes |
+| `NEXUS_CLIENT_ID` | Agent client ID | No* |
+| `NEXUS_CLIENT_SECRET` | Agent secret | No* |
+| `OBLIVION_PROFILE` | Profile name to use from saved credentials | No |
 
-### Claude Code MCP Configuration
+*If not provided, loads from `~/.oblivion/credentials.json`
 
-Add to your Claude Code settings (`~/.claude.json` or via the `/mcp` command):
+### Credential Storage
 
+**Location:** `~/.oblivion/credentials.json`
+**Permissions:** `600` (owner read/write only)
+
+**Format:**
 ```json
 {
-  "mcpServers": {
-    "oblivion": {
-      "command": "node",
-      "args": ["/path/to/packages/mcp-server/dist/index.js"],
-      "env": {
-        "NEXUS_URL": "http://localhost:3000",
-        "NEXUS_CLIENT_ID": "claude-code-agent",
-        "NEXUS_CLIENT_SECRET": "claude_secret"
-      }
-    }
-  }
+  "agents": {
+    "agent-1": {
+      "nexusUrl": "http://localhost:3000",
+      "clientId": "agent-1",
+      "clientSecret": "secret1",
+      "agentName": "Code Agent",
+      "savedAt": "2026-01-10T..."
+    },
+    "agent-2": { ... }
+  },
+  "activeProfile": "agent-1"
 }
 ```
 
 ## Available Tools
 
-### Task Management
+### Registration (No Credentials Needed)
+
+| Tool | Description |
+|------|-------------|
+| `register_agent` | Self-register with a registration token - credentials auto-saved! |
+| `check_registration_status` | Check if your registration has been approved |
+
+### Task Management (Requires Credentials)
 
 | Tool | Description |
 |------|-------------|
 | `list_available_tasks` | Get unclaimed tasks available for claiming |
 | `list_claimed_tasks` | Get tasks you have claimed |
-| `claim_task` | Claim a task to work on |
+| `claim_task` | Claim a task to work on (posts to Slack as agent) |
 | `update_task_status` | Update task status (IN_PROGRESS, BLOCKED_ON_HUMAN, DONE) |
 | `get_task_context` | Get detailed task info including project and Slack thread |
+| `get_all_tasks` | Get all tasks grouped by status |
 
 ### Dashboard & Monitoring
 
@@ -68,13 +119,12 @@ Add to your Claude Code settings (`~/.claude.json` or via the `/mcp` command):
 | `list_agents` | List all agents with connection status |
 | `list_projects` | List all projects with @tags |
 | `get_dashboard_stats` | Get system overview statistics |
-| `get_all_tasks` | Get all tasks grouped by status |
 
 ### Communication
 
 | Tool | Description |
 |------|-------------|
-| `post_to_slack_thread` | Post a message to a task's Slack thread |
+| `post_to_slack_thread` | Post to task's Slack thread (appears as agent with custom emoji) |
 
 ## Development
 

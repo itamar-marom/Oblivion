@@ -37,6 +37,31 @@ export interface SlackChannelResult {
 }
 
 /**
+ * Individual Slack message
+ */
+export interface SlackMessage {
+  ts: string;
+  threadTs?: string;
+  user: string;
+  username?: string;
+  botId?: string;
+  text: string;
+  type: string;
+  createdAt: Date;
+}
+
+/**
+ * Result of reading thread messages
+ */
+export interface SlackThreadMessagesResult {
+  ok: boolean;
+  messages: SlackMessage[];
+  hasMore: boolean;
+  nextCursor?: string;
+  error?: string;
+}
+
+/**
  * SlackService handles all interactions with the Slack API.
  *
  * Features:
@@ -52,12 +77,17 @@ export interface SlackChannelResult {
  *
  * Required Scopes:
  * - channels:manage (create, archive channels)
+ * - chat:write (post messages)
+ * - chat:write.customize (**CRITICAL** - enables custom username/icon per agent)
+ * - chat:write.public (post to channels bot isn't in)
+ * - channels:history (**NEW** - read messages from public channels)
+ * - groups:history (**NEW** - read messages from private channels)
+ *
+ * Optional Scopes (for user mapping features):
  * - channels:write.invites (invite users to channels)
+ * - users:read (lookup user IDs)
+ * - users:read.email (lookup users by email)
  * - groups:write (for private channels)
- * - chat:write
- * - chat:write.public (for posting to channels bot isn't in)
- * - users:read (to lookup user IDs)
- * - users:read.email (to lookup users by email)
  */
 @Injectable()
 export class SlackService {
@@ -688,6 +718,29 @@ export class SlackService {
   }
 
   /**
+   * Get a unique emoji for an agent based on their capabilities.
+   * Makes agents visually distinct in Slack.
+   *
+   * @param capabilities - Agent's capability list
+   * @returns Emoji string (e.g., ':robot_face:', ':hammer_and_wrench:')
+   */
+  getAgentEmoji(capabilities: string[]): string {
+    // Match capabilities to relevant emojis
+    if (capabilities.includes('code')) return ':technologist:';
+    if (capabilities.includes('review')) return ':mag:';
+    if (capabilities.includes('test')) return ':white_check_mark:';
+    if (capabilities.includes('deploy')) return ':rocket:';
+    if (capabilities.includes('security')) return ':shield:';
+    if (capabilities.includes('infrastructure')) return ':gear:';
+    if (capabilities.includes('automation')) return ':robot_face:';
+    if (capabilities.includes('documentation')) return ':books:';
+    if (capabilities.includes('design')) return ':art:';
+
+    // Default for agents without specific capabilities
+    return ':robot_face:';
+  }
+
+  /**
    * Format a ClickUp comment for Slack
    *
    * @param author - Comment author name
@@ -696,5 +749,110 @@ export class SlackService {
    */
   formatCommentForSlack(author: string, content: string): string {
     return `💬 *${author}* commented on ClickUp:\n>${content.split('\n').join('\n>')}`;
+  }
+
+  // ==================== Message Reading ====================
+
+  /**
+   * Get messages from a Slack thread.
+   * Reads the parent message and all replies.
+   *
+   * Rate Limits (new non-Marketplace apps as of 2025):
+   * - 1 request per minute
+   * - Max 15 messages per request
+   *
+   * @param channelId - Slack channel ID
+   * @param threadTs - Thread timestamp (parent message ts)
+   * @param limit - Maximum messages to retrieve (default: 15, max: 15)
+   * @param cursor - Pagination cursor for fetching more messages
+   * @returns Thread messages or null on failure
+   */
+  async getThreadMessages(
+    channelId: string,
+    threadTs: string,
+    limit: number = 15,
+    cursor?: string,
+  ): Promise<SlackThreadMessagesResult | null> {
+    if (!this.isConfigured()) {
+      this.logger.warn('Slack bot token not configured');
+      return null;
+    }
+
+    // Enforce limit for new non-Marketplace apps
+    const effectiveLimit = Math.min(limit, 15);
+
+    try {
+      const result = await this.client.conversations.replies({
+        channel: channelId,
+        ts: threadTs,
+        limit: effectiveLimit,
+        cursor,
+        inclusive: true, // Include parent message
+      });
+
+      if (!result.ok || !result.messages) {
+        this.logger.error(`Failed to read thread: ${result.error}`);
+        return {
+          ok: false,
+          messages: [],
+          hasMore: false,
+          error: result.error,
+        };
+      }
+
+      // Transform messages to our format
+      const messages: SlackMessage[] = result.messages.map((msg) => ({
+        ts: msg.ts!,
+        threadTs: msg.thread_ts,
+        user: msg.user || msg.bot_id || 'unknown',
+        username: (msg as any).username, // Custom username if set via chat:write.customize
+        botId: msg.bot_id,
+        text: msg.text || '',
+        type: msg.type || 'message',
+        createdAt: new Date(parseFloat(msg.ts!) * 1000),
+      }));
+
+      this.logger.log(
+        `Read ${messages.length} messages from thread ${channelId}:${threadTs}`,
+      );
+
+      return {
+        ok: true,
+        messages,
+        hasMore: !!result.response_metadata?.next_cursor,
+        nextCursor: result.response_metadata?.next_cursor,
+      };
+    } catch (error: unknown) {
+      const slackError = error as { data?: { error?: string } };
+
+      // Handle specific errors
+      if (slackError.data?.error === 'thread_not_found') {
+        this.logger.warn(`Thread not found: ${channelId}:${threadTs}`);
+        return {
+          ok: false,
+          messages: [],
+          hasMore: false,
+          error: 'thread_not_found',
+        };
+      }
+
+      if (slackError.data?.error === 'ratelimited') {
+        this.logger.warn(`Rate limited reading thread ${channelId}:${threadTs}`);
+        return {
+          ok: false,
+          messages: [],
+          hasMore: false,
+          error: 'rate_limited',
+        };
+      }
+
+      this.logger.error(`Failed to read thread: ${error}`);
+      return {
+        ok: false,
+        messages: [],
+        hasMore: false,
+        error: 'unknown_error',
+      };
+    }
   }
 }

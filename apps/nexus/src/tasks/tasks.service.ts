@@ -149,7 +149,7 @@ export class TasksService implements OnModuleInit {
                 members: {
                   where: { agent: { isActive: true } },
                   include: {
-                    agent: { select: { id: true, name: true } },
+                    agent: { select: { id: true, name: true, capabilities: true } },
                   },
                 },
               },
@@ -223,10 +223,10 @@ export class TasksService implements OnModuleInit {
       };
     }
 
-    // Get agent name for notification
+    // Get agent info for notification
     const agent = await this.prisma.agent.findUnique({
       where: { id: agentId },
-      select: { name: true },
+      select: { name: true, capabilities: true },
     });
 
     // Notify other agents in the group that task was claimed
@@ -252,10 +252,18 @@ export class TasksService implements OnModuleInit {
     // Post to Slack thread if task has Slack info
     if (task.slackChannelId && task.slackThreadTs) {
       const agentName = agent?.name ?? 'An agent';
+      const agentEmoji = agent?.capabilities
+        ? this.slackService.getAgentEmoji(agent.capabilities as string[])
+        : ':robot_face:';
+
       await this.slackService.postThreadReply(
         task.slackChannelId,
         task.slackThreadTs,
-        `🤖 *${agentName}* claimed this task and is starting work.`,
+        `Claimed this task and starting work.`,
+        {
+          username: agentName,
+          iconEmoji: agentEmoji,
+        },
       );
       this.logger.log(`Slack notified: ${agentName} claimed task ${taskId}`);
     }
@@ -455,8 +463,23 @@ export class TasksService implements OnModuleInit {
     let task = await this.prisma.task.findUnique({
       where: { id: taskId },
       include: {
-        claimedByAgent: { select: { id: true, name: true } },
-        project: { select: { slackChannelId: true, name: true } },
+        claimedByAgent: { select: { id: true, name: true, capabilities: true } },
+        project: {
+          select: {
+            slackChannelId: true,
+            name: true,
+            group: {
+              select: {
+                id: true,
+                name: true,
+                members: {
+                  where: { agentId },  // Filter to requesting agent only
+                  select: { agentId: true },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -464,8 +487,23 @@ export class TasksService implements OnModuleInit {
       task = await this.prisma.task.findUnique({
         where: { clickupTaskId: taskId },
         include: {
-          claimedByAgent: { select: { id: true, name: true } },
-          project: { select: { slackChannelId: true, name: true } },
+          claimedByAgent: { select: { id: true, name: true, capabilities: true } },
+          project: {
+            select: {
+              slackChannelId: true,
+              name: true,
+              group: {
+                select: {
+                  id: true,
+                  name: true,
+                  members: {
+                    where: { agentId },  // Filter to requesting agent only
+                    select: { agentId: true },
+                  },
+                },
+              },
+            },
+          },
         },
       });
     }
@@ -474,9 +512,13 @@ export class TasksService implements OnModuleInit {
       throw new NotFoundException('Task not found');
     }
 
-    // Verify the agent has claimed this task
-    if (task.claimedByAgentId !== agentId) {
-      throw new ForbiddenException('Only the agent who claimed this task can post to its Slack thread');
+    // Authorization: Agent must be in the same group as the task's project
+    const isGroupMember = task.project.group.members.length > 0;
+
+    if (!isGroupMember) {
+      throw new ForbiddenException(
+        'You can only post to threads for tasks in your groups',
+      );
     }
 
     // Determine channel to use (task's channel or project's channel)
@@ -513,12 +555,26 @@ export class TasksService implements OnModuleInit {
       this.logger.log(`Created Slack thread for task ${taskId}: ${threadTs}`);
     }
 
-    // Post to Slack thread
+    // Get the posting agent's info (not the claimer's)
+    const postingAgent = await this.prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { name: true, capabilities: true },
+    });
+
+    // Post to Slack thread as the posting agent (with their username and icon)
+    const agentEmoji = postingAgent?.capabilities
+      ? this.slackService.getAgentEmoji(postingAgent.capabilities as string[])
+      : ':robot_face:';
+
     const result = await this.slackService.postThreadReply(
       channelId,
       threadTs,
       message,
-      { broadcast },
+      {
+        broadcast,
+        username: postingAgent?.name || 'Oblivion Agent',
+        iconEmoji: agentEmoji,
+      },
     );
 
     if (!result) {
@@ -531,6 +587,142 @@ export class TasksService implements OnModuleInit {
       ok: true,
       channelId: result.channelId,
       messageTs: result.messageTs,
+    };
+  }
+
+  /**
+   * Get Slack thread messages for a task.
+   *
+   * Authorization:
+   * - Agent must be in the same group as the task's project
+   * - Task must have a Slack thread
+   *
+   * @param agentId - Agent requesting the messages
+   * @param taskId - Task ID (internal or ClickUp)
+   * @param limit - Maximum messages to retrieve (default: 15, max: 15)
+   * @param cursor - Pagination cursor for older messages
+   * @returns Thread messages with task context
+   */
+  async getTaskSlackThread(
+    agentId: string,
+    taskId: string,
+    limit: number = 15,
+    cursor?: string,
+  ) {
+    // Find task by ID (try internal ID first, then ClickUp ID)
+    let task = await this.prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        claimedByAgent: { select: { id: true, name: true } },
+        project: {
+          select: {
+            id: true,
+            name: true,
+            slackChannelId: true,
+            groupId: true,
+            group: {
+              select: {
+                id: true,
+                name: true,
+                members: {
+                  where: { agentId },
+                  select: { agentId: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!task) {
+      task = await this.prisma.task.findUnique({
+        where: { clickupTaskId: taskId },
+        include: {
+          claimedByAgent: { select: { id: true, name: true } },
+          project: {
+            select: {
+              id: true,
+              name: true,
+              slackChannelId: true,
+              groupId: true,
+              group: {
+                select: {
+                  id: true,
+                  name: true,
+                  members: {
+                    where: { agentId },
+                    select: { agentId: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+    }
+
+    if (!task) {
+      throw new NotFoundException('Task not found');
+    }
+
+    // Authorization: Agent must be in the same group as the task's project
+    const isGroupMember = task.project.group.members.length > 0;
+
+    if (!isGroupMember) {
+      throw new ForbiddenException(
+        'You can only read threads for tasks in your groups',
+      );
+    }
+
+    // Check if task has a Slack thread
+    if (!task.slackThreadTs || !task.slackChannelId) {
+      throw new NotFoundException(
+        'This task does not have a Slack thread yet',
+      );
+    }
+
+    // Read messages from Slack
+    const result = await this.slackService.getThreadMessages(
+      task.slackChannelId,
+      task.slackThreadTs,
+      limit,
+      cursor,
+    );
+
+    if (!result) {
+      throw new Error('Failed to read Slack thread');
+    }
+
+    if (!result.ok) {
+      if (result.error === 'thread_not_found') {
+        throw new NotFoundException('Slack thread not found');
+      }
+      if (result.error === 'rate_limited') {
+        throw new Error(
+          'Slack API rate limit exceeded. Please try again in a minute.',
+        );
+      }
+      throw new Error(`Failed to read Slack thread: ${result.error}`);
+    }
+
+    this.logger.log(
+      `Agent ${agentId} read ${result.messages.length} messages from task ${taskId} thread`,
+    );
+
+    return {
+      ok: true,
+      taskId: task.id,
+      clickupTaskId: task.clickupTaskId,
+      title: task.title,
+      channelId: task.slackChannelId,
+      threadTs: task.slackThreadTs,
+      messages: result.messages,
+      hasMore: result.hasMore,
+      nextCursor: result.nextCursor,
+      claimedBy: task.claimedByAgent?.name,
+      projectName: task.project.name,
+      groupName: task.project.group.name,
     };
   }
 

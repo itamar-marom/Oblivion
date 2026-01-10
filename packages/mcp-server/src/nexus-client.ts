@@ -128,6 +128,33 @@ export interface SlackThreadReplyResult {
   error?: string;
 }
 
+export interface SlackThreadMessage {
+  ts: string;
+  threadTs?: string;
+  user: string;
+  username?: string;
+  botId?: string;
+  text: string;
+  type: string;
+  createdAt: string;
+}
+
+export interface SlackThreadResult {
+  ok: boolean;
+  taskId: string;
+  clickupTaskId: string;
+  title?: string;
+  channelId: string;
+  threadTs: string;
+  messages: SlackThreadMessage[];
+  hasMore: boolean;
+  nextCursor?: string;
+  claimedBy?: string;
+  projectName: string;
+  groupName: string;
+  error?: string;
+}
+
 // =========================================================================
 // Registration Types
 // =========================================================================
@@ -361,6 +388,23 @@ export class NexusClient {
     });
   }
 
+  /**
+   * Get Slack thread messages for a task
+   */
+  async getTaskSlackThread(
+    taskId: string,
+    limit?: number,
+    cursor?: string
+  ): Promise<SlackThreadResult> {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    if (cursor) params.append('cursor', cursor);
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+
+    return this.request<SlackThreadResult>('GET', `/tasks/${taskId}/slack-thread${query}`);
+  }
+
   // =========================================================================
   // Registration APIs (unauthenticated)
   // =========================================================================
@@ -438,9 +482,13 @@ export class NexusClient {
 }
 
 /**
- * Create a NexusClient from environment variables
+ * Create a NexusClient from environment variables and/or saved credentials
+ * Priority: env vars > saved credentials file
+ *
+ * Note: Import getEffectiveCredentials in the calling code to avoid circular deps
  */
 export function createNexusClientFromEnv(): NexusClient {
+  // These will be checked by server.ts which imports credentials-manager
   const baseUrl = process.env.NEXUS_URL;
   const clientId = process.env.NEXUS_CLIENT_ID;
   const clientSecret = process.env.NEXUS_CLIENT_SECRET;
@@ -464,6 +512,8 @@ export function createNexusClientFromEnv(): NexusClient {
 
 /**
  * Check if we're in bootstrap mode (only NEXUS_URL set, no credentials)
+ *
+ * Note: Only checks env vars. Calling code should check saved credentials too.
  */
 export function isBootstrapMode(): boolean {
   const baseUrl = process.env.NEXUS_URL;

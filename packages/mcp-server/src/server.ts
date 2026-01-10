@@ -3,52 +3,64 @@
  *
  * Exposes Nexus task management capabilities as MCP tools for Claude Code.
  *
- * Modes:
- * - Full mode: All tools available (requires NEXUS_URL, NEXUS_CLIENT_ID, NEXUS_CLIENT_SECRET)
- * - Bootstrap mode: Only registration tools (requires only NEXUS_URL)
+ * All tools are always available. Registration tools work without credentials.
+ * Task/agent/slack tools will fail gracefully if credentials are missing.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   createNexusClientFromEnv,
   createBootstrapClient,
-  isBootstrapMode,
   type NexusClient,
 } from './nexus-client.js';
+import { getEffectiveCredentials } from './credentials-manager.js';
 import { registerTaskTools } from './tools/tasks.js';
 import { registerAgentTools } from './tools/agents.js';
 import { registerSlackTools } from './tools/slack.js';
 import { registerRegistrationTools } from './tools/registration.js';
 
-export { isBootstrapMode };
+/**
+ * Check if we're in bootstrap mode by checking effective credentials
+ */
+export function isBootstrapMode(): boolean {
+  const creds = getEffectiveCredentials();
+  return !!creds.nexusUrl && (!creds.clientId || !creds.clientSecret);
+}
 
 /**
  * Create and configure the MCP server
  *
- * In bootstrap mode (no credentials), only registration tools are available.
- * This allows new agents to self-register before they have credentials.
+ * All tools are always registered. No need to switch modes - one config works
+ * for both bootstrap (registration only) and full operation.
  */
 export function createServer(nexus?: NexusClient): McpServer {
-  const bootstrapMode = !nexus && isBootstrapMode();
-
   const server = new McpServer({
     name: 'oblivion',
     version: '0.1.0',
   });
 
-  // Use provided client, or create appropriate client based on mode
-  const nexusClient = nexus ?? (bootstrapMode ? createBootstrapClient() : createNexusClientFromEnv());
+  let nexusClient: NexusClient;
 
-  if (bootstrapMode) {
-    // Bootstrap mode: only registration tools
-    registerRegistrationTools(server, nexusClient);
+  if (nexus) {
+    // Use provided client (for testing)
+    nexusClient = nexus;
   } else {
-    // Full mode: all tools
-    registerTaskTools(server, nexusClient);
-    registerAgentTools(server, nexusClient);
-    registerSlackTools(server, nexusClient);
-    registerRegistrationTools(server, nexusClient);
+    // Load credentials and set env vars for nexus-client to use
+    const creds = getEffectiveCredentials();
+
+    if (creds.nexusUrl) process.env.NEXUS_URL = creds.nexusUrl;
+    if (creds.clientId) process.env.NEXUS_CLIENT_ID = creds.clientId;
+    if (creds.clientSecret) process.env.NEXUS_CLIENT_SECRET = creds.clientSecret;
+
+    const bootstrapMode = isBootstrapMode();
+    nexusClient = bootstrapMode ? createBootstrapClient() : createNexusClientFromEnv();
   }
+
+  // Always register all tools - no mode switching needed
+  registerTaskTools(server, nexusClient);
+  registerAgentTools(server, nexusClient);
+  registerSlackTools(server, nexusClient);
+  registerRegistrationTools(server, nexusClient);
 
   return server;
 }

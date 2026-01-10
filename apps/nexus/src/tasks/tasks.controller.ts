@@ -5,13 +5,14 @@ import {
   Patch,
   Param,
   Body,
+  Query,
   UseGuards,
   Request,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { TasksService } from './tasks.service';
-import { UpdateTaskStatusDto, PostSlackReplyDto } from './dto';
+import { UpdateTaskStatusDto, PostSlackReplyDto, GetSlackThreadDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 /**
@@ -101,6 +102,24 @@ export class TasksController {
       taskId,
       dto.message,
       dto.broadcast,
+    );
+  }
+
+  /**
+   * Get Slack thread messages for a task.
+   * Any agent in the task's group can read the thread.
+   */
+  @Get(':id/slack-thread')
+  async getSlackThread(
+    @Request() req,
+    @Param('id') taskId: string,
+    @Query() dto: GetSlackThreadDto,
+  ) {
+    return this.tasksService.getTaskSlackThread(
+      req.user.id,
+      taskId,
+      dto.limit || 15,
+      dto.cursor,
     );
   }
 }

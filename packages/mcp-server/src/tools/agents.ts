@@ -7,11 +7,89 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { NexusClient } from '../nexus-client.js';
+import { getEffectiveCredentials } from '../credentials-manager.js';
 
 /**
  * Register agent and dashboard tools with the MCP server
  */
 export function registerAgentTools(server: McpServer, nexus: NexusClient): void {
+  // =========================================================================
+  // whoami
+  // =========================================================================
+  server.tool(
+    'whoami',
+    'Get information about your current agent identity and configuration.',
+    {},
+    async () => {
+      try {
+        const creds = getEffectiveCredentials();
+
+        if (!creds.clientId) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: '## Not Authenticated\n\n' +
+                  'No agent credentials configured.\n\n' +
+                  'Use `register_agent` to register a new agent.',
+              },
+            ],
+          };
+        }
+
+        // Try to get full agent details from API
+        try {
+          const agents = await nexus.getAgents();
+          const myAgent = agents.find(a => a.clientId === creds.clientId);
+
+          if (myAgent) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text:
+                    `## Current Agent Identity\n\n` +
+                    `**Name:** ${myAgent.name}\n` +
+                    `**Client ID:** \`${myAgent.clientId}\`\n` +
+                    `**Status:** ${myAgent.connectionStatus}\n` +
+                    `**Capabilities:** ${myAgent.capabilities.join(', ')}\n` +
+                    `**Nexus URL:** ${creds.nexusUrl}\n\n` +
+                    `You are ${myAgent.isConnected ? '**connected** 🟢' : 'offline ⚫'} to Nexus.`,
+                },
+              ],
+            };
+          }
+        } catch {
+          // API call failed, return basic info from credentials
+        }
+
+        // Fallback: just show credentials
+        return {
+          content: [
+            {
+              type: 'text',
+              text:
+                `## Current Agent Identity\n\n` +
+                `**Client ID:** \`${creds.clientId}\`\n` +
+                `**Nexus URL:** ${creds.nexusUrl}\n\n` +
+                `(Connected, but unable to fetch full details)`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error getting agent info: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
   // =========================================================================
   // list_agents
   // =========================================================================
