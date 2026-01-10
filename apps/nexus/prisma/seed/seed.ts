@@ -17,6 +17,7 @@ async function main() {
   await prisma.agentGroupMembership.deleteMany();
   await prisma.project.deleteMany();
   await prisma.group.deleteMany();
+  await prisma.registrationToken.deleteMany();
   await prisma.agent.deleteMany();
   await prisma.tenant.deleteMany();
 

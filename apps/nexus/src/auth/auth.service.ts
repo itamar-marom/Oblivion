@@ -1,9 +1,10 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { TokenRequestDto } from './dto/token-request.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
+import { RegisterAgentDto } from './dto/register-agent.dto';
 
 /**
  * JWT payload structure.
@@ -17,6 +18,8 @@ export interface JwtPayload {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -44,6 +47,15 @@ export class AuthService {
     // Check if agent is active
     if (!agent.isActive) {
       throw new UnauthorizedException('Agent is disabled');
+    }
+
+    // Check approval status
+    if (agent.approvalStatus === 'PENDING') {
+      throw new UnauthorizedException('Registration pending admin approval');
+    }
+
+    if (agent.approvalStatus === 'REJECTED') {
+      throw new UnauthorizedException('Registration was rejected');
     }
 
     // Verify the secret (bcrypt comparison)
@@ -99,6 +111,11 @@ export class AuthService {
       throw new UnauthorizedException('Agent not found or disabled');
     }
 
+    // Check approval status (in case status changed after token was issued)
+    if (agent.approvalStatus !== 'APPROVED') {
+      throw new UnauthorizedException('Agent is not approved');
+    }
+
     // Update lastSeenAt on every authenticated request (fire and forget)
     this.prisma.agent.update({
       where: { id: agent.id },
@@ -139,5 +156,103 @@ export class AuthService {
       default:
         return 3600;
     }
+  }
+
+  /**
+   * Register a new agent using a registration token.
+   *
+   * This endpoint does NOT require authentication - the registration token
+   * serves as the authorization mechanism.
+   *
+   * Flow:
+   * 1. Validate registration token (exists, active, not expired, not exhausted)
+   * 2. Get group and tenant from token
+   * 3. Validate clientId uniqueness
+   * 4. Create agent with PENDING approval status
+   * 5. Set pendingGroupId (group agent will join on approval)
+   * 6. Increment token's usedCount
+   */
+  async registerAgent(dto: RegisterAgentDto) {
+    // 1. Find and validate the registration token
+    const token = await this.prisma.registrationToken.findUnique({
+      where: { token: dto.registrationToken },
+      include: {
+        group: { select: { id: true, name: true, tenantId: true } },
+      },
+    });
+
+    if (!token) {
+      throw new BadRequestException('Invalid registration token');
+    }
+
+    if (!token.isActive) {
+      throw new BadRequestException('Registration token has been revoked');
+    }
+
+    if (token.expiresAt && token.expiresAt < new Date()) {
+      throw new BadRequestException('Registration token has expired');
+    }
+
+    if (token.maxUses && token.usedCount >= token.maxUses) {
+      throw new BadRequestException('Registration token has reached maximum uses');
+    }
+
+    // 2. Get tenant from the token's group
+    const tenantId = token.group.tenantId;
+    const groupId = token.groupId;
+    const groupName = token.group.name;
+
+    // 3. Check if clientId already exists (globally unique)
+    const existingAgent = await this.prisma.agent.findUnique({
+      where: { clientId: dto.clientId },
+    });
+
+    if (existingAgent) {
+      throw new ConflictException(`Agent with clientId "${dto.clientId}" already exists`);
+    }
+
+    // 4. Hash the client secret
+    const hashedSecret = await bcrypt.hash(dto.clientSecret, 10);
+
+    // 5. Create the agent with PENDING status using a transaction
+    const [agent] = await this.prisma.$transaction([
+      // Create the agent
+      this.prisma.agent.create({
+        data: {
+          tenantId,
+          name: dto.name,
+          clientId: dto.clientId,
+          clientSecret: hashedSecret,
+          description: dto.description || null,
+          email: dto.email || null,
+          capabilities: dto.capabilities || [],
+          approvalStatus: 'PENDING',
+          pendingGroupId: groupId,
+          registrationTokenId: token.id,
+          isActive: true,
+        },
+      }),
+      // Increment token's usedCount
+      this.prisma.registrationToken.update({
+        where: { id: token.id },
+        data: { usedCount: { increment: 1 } },
+      }),
+    ]);
+
+    this.logger.log(
+      `Agent "${agent.name}" (${agent.clientId}) registered with token for group "${groupName}". Pending approval.`,
+    );
+
+    return {
+      id: agent.id,
+      clientId: agent.clientId,
+      name: agent.name,
+      approvalStatus: agent.approvalStatus,
+      pendingGroup: {
+        id: groupId,
+        name: groupName,
+      },
+      message: 'Registration submitted. Awaiting admin approval.',
+    };
   }
 }

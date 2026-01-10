@@ -1,11 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNexus } from "@/hooks/use-nexus";
-import { formatDistanceToNow } from "date-fns";
-import { Bot, Wifi, WifiOff, Zap, Clock, Settings } from "lucide-react";
-import { CreateAgentModal, EditAgentModal } from "@/components/modals";
-import { observerApi, type ObserverAgent } from "@/lib/api-client";
+import { formatDistanceToNow, format } from "date-fns";
+import {
+  Bot,
+  Wifi,
+  WifiOff,
+  Zap,
+  Clock,
+  Settings,
+  Key,
+  UserPlus,
+  Users,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
+import {
+  CreateAgentModal,
+  EditAgentModal,
+  ApproveAgentModal,
+  CreateRegistrationTokenModal,
+} from "@/components/modals";
+import {
+  observerApi,
+  type ObserverAgent,
+  type PendingAgent,
+  type RegistrationToken,
+} from "@/lib/api-client";
 
 const statusColors = {
   connected: "bg-blue-500/20 text-blue-400 border-blue-500/30",
@@ -27,9 +50,70 @@ export default function AgentsPage() {
   const { agents, refresh } = useNexus();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [approveModalOpen, setApproveModalOpen] = useState(false);
+  const [tokenModalOpen, setTokenModalOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<ObserverAgent | null>(null);
+  const [selectedPendingAgent, setSelectedPendingAgent] = useState<PendingAgent | null>(null);
+
+  // Pending agents state
+  const [pendingAgents, setPendingAgents] = useState<PendingAgent[]>([]);
+  const [isLoadingPending, setIsLoadingPending] = useState(true);
+
+  // Registration tokens state
+  const [tokens, setTokens] = useState<RegistrationToken[]>([]);
+  const [isLoadingTokens, setIsLoadingTokens] = useState(true);
+  const [showTokens, setShowTokens] = useState(false);
 
   const connectedCount = agents.filter((a) => a.status !== "disconnected").length;
+
+  // Fetch pending agents
+  const fetchPendingAgents = useCallback(async () => {
+    try {
+      const data = await observerApi.getPendingAgents();
+      setPendingAgents(data);
+    } catch {
+      // Ignore errors
+    } finally {
+      setIsLoadingPending(false);
+    }
+  }, []);
+
+  // Fetch registration tokens
+  const fetchTokens = useCallback(async () => {
+    try {
+      const data = await observerApi.listRegistrationTokens();
+      setTokens(data);
+    } catch {
+      // Ignore errors
+    } finally {
+      setIsLoadingTokens(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPendingAgents();
+    fetchTokens();
+  }, [fetchPendingAgents, fetchTokens]);
+
+  const handleReviewPendingAgent = (agent: PendingAgent) => {
+    setSelectedPendingAgent(agent);
+    setApproveModalOpen(true);
+  };
+
+  const handleApprovalSuccess = () => {
+    fetchPendingAgents();
+    refresh();
+  };
+
+  const handleRevokeToken = async (tokenId: string) => {
+    if (!confirm("Are you sure you want to revoke this token?")) return;
+    try {
+      await observerApi.revokeRegistrationToken(tokenId);
+      fetchTokens();
+    } catch (err) {
+      console.error("Failed to revoke token:", err);
+    }
+  };
 
   const handleEditAgent = async (agent: typeof agents[0]) => {
     try {
@@ -71,12 +155,181 @@ export default function AgentsPage() {
             {connectedCount} of {agents.length} agents connected
           </p>
         </div>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setTokenModalOpen(true)}
+            className="flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
+          >
+            <Key className="h-4 w-4" />
+            Generate Token
+          </button>
+          <button
+            onClick={() => setCreateModalOpen(true)}
+            className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium hover:bg-cyan-700 transition-colors"
+          >
+            Register New Agent
+          </button>
+        </div>
+      </div>
+
+      {/* Pending Approvals Section */}
+      {pendingAgents.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <UserPlus className="h-5 w-5 text-yellow-500" />
+            <h2 className="text-lg font-semibold">Pending Approvals</h2>
+            <span className="rounded-full bg-yellow-500 px-2 py-0.5 text-xs font-semibold text-black">
+              {pendingAgents.length}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {pendingAgents.map((agent) => (
+              <div
+                key={agent.id}
+                className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-6"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-500/20">
+                      <Bot className="h-5 w-5 text-yellow-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">{agent.name}</h3>
+                      <p className="text-sm text-zinc-500">{agent.clientId}</p>
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-yellow-500/20 border border-yellow-500/30 px-2.5 py-1 text-xs font-medium text-yellow-400">
+                    Pending
+                  </span>
+                </div>
+
+                {agent.pendingGroup && (
+                  <div className="flex items-center gap-2 text-sm mb-3">
+                    <Users className="h-4 w-4 text-zinc-500" />
+                    <span className="text-zinc-400">
+                      Joining: <span className="text-white">{agent.pendingGroup.name}</span>
+                    </span>
+                  </div>
+                )}
+
+                {agent.capabilities.length > 0 && (
+                  <div className="flex items-start gap-2 text-sm mb-4">
+                    <Zap className="h-4 w-4 text-zinc-500 mt-0.5" />
+                    <div className="flex flex-wrap gap-1">
+                      {agent.capabilities.slice(0, 3).map((cap) => (
+                        <span
+                          key={cap}
+                          className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400"
+                        >
+                          {cap}
+                        </span>
+                      ))}
+                      {agent.capabilities.length > 3 && (
+                        <span className="text-xs text-zinc-500">
+                          +{agent.capabilities.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => handleReviewPendingAgent(agent)}
+                  className="w-full rounded-lg bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-500 transition-colors"
+                >
+                  Review Request
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Registration Tokens Section */}
+      <div className="mb-8">
         <button
-          onClick={() => setCreateModalOpen(true)}
-          className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium hover:bg-cyan-700 transition-colors"
+          onClick={() => setShowTokens(!showTokens)}
+          className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors mb-4"
         >
-          Register New Agent
+          <Key className="h-5 w-5" />
+          <span className="font-medium">Registration Tokens</span>
+          <span className="text-zinc-500">({tokens.filter(t => t.isActive).length} active)</span>
+          {showTokens ? (
+            <ChevronUp className="h-4 w-4" />
+          ) : (
+            <ChevronDown className="h-4 w-4" />
+          )}
         </button>
+
+        {showTokens && (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+            {tokens.length === 0 ? (
+              <div className="p-6 text-center text-zinc-500">
+                No registration tokens yet.{" "}
+                <button
+                  onClick={() => setTokenModalOpen(true)}
+                  className="text-cyan-400 hover:underline"
+                >
+                  Generate one
+                </button>
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="border-b border-zinc-800 bg-zinc-800/50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-400">Name</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-400">Group</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-400">Uses</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-400">Expires</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-400">Status</th>
+                    <th className="px-4 py-3 text-right font-medium text-zinc-400">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {tokens.map((token) => (
+                    <tr key={token.id} className={!token.isActive ? "opacity-50" : ""}>
+                      <td className="px-4 py-3">
+                        {token.name || <span className="text-zinc-500">Unnamed</span>}
+                      </td>
+                      <td className="px-4 py-3 text-zinc-300">{token.groupName}</td>
+                      <td className="px-4 py-3 text-zinc-300">
+                        {token.usedCount}
+                        {token.maxUses && ` / ${token.maxUses}`}
+                      </td>
+                      <td className="px-4 py-3 text-zinc-300">
+                        {token.expiresAt
+                          ? format(new Date(token.expiresAt), "MMM d, yyyy")
+                          : "Never"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {token.isActive ? (
+                          <span className="rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
+                            Active
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-zinc-500/20 px-2 py-0.5 text-xs text-zinc-400">
+                            Revoked
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {token.isActive && (
+                          <button
+                            onClick={() => handleRevokeToken(token.id)}
+                            className="rounded p-1.5 text-zinc-500 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                            title="Revoke token"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Agent Grid */}
@@ -195,6 +448,21 @@ export default function AgentsPage() {
         agent={selectedAgent}
         onClose={() => setEditModalOpen(false)}
         onSuccess={handleEditSuccess}
+      />
+
+      {/* Approve Agent Modal */}
+      <ApproveAgentModal
+        isOpen={approveModalOpen}
+        agent={selectedPendingAgent}
+        onClose={() => setApproveModalOpen(false)}
+        onSuccess={handleApprovalSuccess}
+      />
+
+      {/* Create Registration Token Modal */}
+      <CreateRegistrationTokenModal
+        isOpen={tokenModalOpen}
+        onClose={() => setTokenModalOpen(false)}
+        onSuccess={fetchTokens}
       />
     </div>
   );

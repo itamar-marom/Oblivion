@@ -1,8 +1,10 @@
-import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
-import { CreateAgentDto, UpdateAgentDto } from './dto';
+import { Injectable, Logger, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { CreateAgentDto, UpdateAgentDto, CreateRegistrationTokenDto, RejectAgentDto } from './dto';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService, AgentConnection } from '../gateway/redis.service';
+import { SlackService } from '../integrations/slack/slack.service';
 
 /**
  * Activity event for the dashboard.
@@ -29,6 +31,7 @@ export interface DashboardStats {
   pendingTasks: number;
   totalGroups: number;
   totalProjects: number;
+  pendingApprovals: number;
 }
 
 /**
@@ -46,6 +49,7 @@ export interface AgentWithStatus {
   isActive: boolean;
   lastSeenAt: Date | null;
   createdAt: Date;
+  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | null;
   // Connection status from Redis
   isConnected: boolean;
   connectionStatus: AgentConnection['status'] | 'offline';
@@ -70,6 +74,7 @@ export class ObserverService {
   constructor(
     private prisma: PrismaService,
     private redisService: RedisService,
+    private slackService: SlackService,
   ) {}
 
   /**
@@ -88,6 +93,7 @@ export class ObserverService {
       pendingTasks,
       totalGroups,
       totalProjects,
+      pendingApprovals,
     ] = await Promise.all([
       this.redisService.getConnectedAgentsForTenant(tenantId),
       // Count agents seen via REST API recently
@@ -119,6 +125,9 @@ export class ObserverService {
       this.prisma.project.count({
         where: { tenantId, isActive: true },
       }),
+      this.prisma.agent.count({
+        where: { tenantId, approvalStatus: 'PENDING' },
+      }),
     ]);
 
     // Connected = WebSocket connected OR recently seen via API
@@ -132,6 +141,7 @@ export class ObserverService {
       pendingTasks,
       totalGroups,
       totalProjects,
+      pendingApprovals,
     };
   }
 
@@ -192,6 +202,7 @@ export class ObserverService {
         isActive: agent.isActive,
         lastSeenAt: agent.lastSeenAt,
         createdAt: agent.createdAt,
+        approvalStatus: agent.approvalStatus,
         isConnected,
         connectionStatus,
         connectedAt: conn?.connectedAt,
@@ -245,6 +256,7 @@ export class ObserverService {
       isActive: agent.isActive,
       lastSeenAt: agent.lastSeenAt,
       createdAt: agent.createdAt,
+      approvalStatus: agent.approvalStatus,
       isConnected,
       connectionStatus,
       connectedAt: conn?.connectedAt,
@@ -294,6 +306,7 @@ export class ObserverService {
       isActive: agent.isActive,
       lastSeenAt: agent.lastSeenAt,
       createdAt: agent.createdAt,
+      approvalStatus: agent.approvalStatus,
       isConnected: false,
       connectionStatus: 'offline',
     };
@@ -346,6 +359,7 @@ export class ObserverService {
       isActive: agent.isActive,
       lastSeenAt: agent.lastSeenAt,
       createdAt: agent.createdAt,
+      approvalStatus: agent.approvalStatus,
       isConnected: !!conn,
       connectionStatus: conn?.status || 'offline',
       connectedAt: conn?.connectedAt,
@@ -443,5 +457,291 @@ export class ObserverService {
       inProgress: tasks.filter((t) => t.status === 'IN_PROGRESS'),
       done: tasks.filter((t) => t.status === 'DONE'),
     };
+  }
+
+  // =========================================================================
+  // REGISTRATION TOKEN MANAGEMENT
+  // =========================================================================
+
+  /**
+   * Generate a unique registration token with "reg_" prefix.
+   */
+  private generateToken(): string {
+    return `reg_${crypto.randomBytes(12).toString('hex')}`;
+  }
+
+  /**
+   * Create a registration token for a group.
+   */
+  async createRegistrationToken(
+    tenantId: string,
+    creatorId: string,
+    dto: CreateRegistrationTokenDto,
+  ) {
+    // Verify group exists and belongs to tenant
+    const group = await this.prisma.group.findFirst({
+      where: { id: dto.groupId, tenantId, isActive: true },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Group not found');
+    }
+
+    // Calculate expiration if provided
+    const expiresAt = dto.expiresInHours
+      ? new Date(Date.now() + dto.expiresInHours * 60 * 60 * 1000)
+      : null;
+
+    // Generate unique token
+    const token = this.generateToken();
+
+    // Create the registration token
+    const registrationToken = await this.prisma.registrationToken.create({
+      data: {
+        groupId: dto.groupId,
+        tenantId,
+        token,
+        name: dto.name || null,
+        expiresAt,
+        maxUses: dto.maxUses || null,
+        createdById: creatorId,
+      },
+      include: {
+        group: { select: { id: true, name: true } },
+      },
+    });
+
+    this.logger.log(`Registration token created for group "${group.name}" by agent ${creatorId}`);
+
+    return {
+      id: registrationToken.id,
+      token: registrationToken.token,
+      groupId: registrationToken.groupId,
+      groupName: registrationToken.group.name,
+      name: registrationToken.name,
+      expiresAt: registrationToken.expiresAt,
+      maxUses: registrationToken.maxUses,
+      usedCount: registrationToken.usedCount,
+      isActive: registrationToken.isActive,
+      createdAt: registrationToken.createdAt,
+    };
+  }
+
+  /**
+   * List registration tokens for a tenant.
+   * Optionally filter by groupId.
+   */
+  async listRegistrationTokens(tenantId: string, groupId?: string) {
+    const tokens = await this.prisma.registrationToken.findMany({
+      where: {
+        tenantId,
+        ...(groupId && { groupId }),
+      },
+      include: {
+        group: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return tokens.map((t) => ({
+      id: t.id,
+      token: t.token,
+      groupId: t.groupId,
+      groupName: t.group.name,
+      name: t.name,
+      expiresAt: t.expiresAt,
+      maxUses: t.maxUses,
+      usedCount: t.usedCount,
+      isActive: t.isActive,
+      createdAt: t.createdAt,
+      createdBy: t.createdBy,
+    }));
+  }
+
+  /**
+   * Revoke (deactivate) a registration token.
+   */
+  async revokeRegistrationToken(tenantId: string, tokenId: string) {
+    const token = await this.prisma.registrationToken.findFirst({
+      where: { id: tokenId, tenantId },
+    });
+
+    if (!token) {
+      throw new NotFoundException('Registration token not found');
+    }
+
+    if (!token.isActive) {
+      throw new BadRequestException('Token is already revoked');
+    }
+
+    await this.prisma.registrationToken.update({
+      where: { id: tokenId },
+      data: { isActive: false },
+    });
+
+    this.logger.log(`Registration token ${tokenId} revoked`);
+
+    return { success: true };
+  }
+
+  // =========================================================================
+  // AGENT APPROVAL WORKFLOW
+  // =========================================================================
+
+  /**
+   * Get agents pending approval for a tenant.
+   */
+  async getPendingAgents(tenantId: string) {
+    const agents = await this.prisma.agent.findMany({
+      where: { tenantId, approvalStatus: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Get pending group info for each agent
+    const agentsWithGroups = await Promise.all(
+      agents.map(async (agent) => {
+        let pendingGroup: { id: string; name: string } | null = null;
+        if (agent.pendingGroupId) {
+          pendingGroup = await this.prisma.group.findUnique({
+            where: { id: agent.pendingGroupId },
+            select: { id: true, name: true },
+          });
+        }
+
+        return {
+          id: agent.id,
+          name: agent.name,
+          clientId: agent.clientId,
+          description: agent.description,
+          email: agent.email,
+          capabilities: agent.capabilities,
+          approvalStatus: agent.approvalStatus,
+          pendingGroup,
+          createdAt: agent.createdAt,
+        };
+      }),
+    );
+
+    return agentsWithGroups;
+  }
+
+  /**
+   * Get count of pending approvals for badge display.
+   */
+  async getPendingCount(tenantId: string) {
+    const count = await this.prisma.agent.count({
+      where: { tenantId, approvalStatus: 'PENDING' },
+    });
+    return { count };
+  }
+
+  /**
+   * Approve an agent registration.
+   * - Sets approval status to APPROVED
+   * - Creates group membership for pendingGroupId
+   * - Clears pendingGroupId
+   * - Invites agent to group's Slack channel
+   */
+  async approveAgent(tenantId: string, agentId: string, approverId: string) {
+    // Find the pending agent
+    const agent = await this.prisma.agent.findFirst({
+      where: { id: agentId, tenantId },
+    });
+
+    if (!agent) {
+      throw new NotFoundException('Agent not found');
+    }
+
+    if (agent.approvalStatus !== 'PENDING') {
+      throw new BadRequestException(`Agent is not pending approval (status: ${agent.approvalStatus})`);
+    }
+
+    // Get the pending group
+    const group = agent.pendingGroupId
+      ? await this.prisma.group.findUnique({
+          where: { id: agent.pendingGroupId },
+        })
+      : null;
+
+    // Update agent and create group membership in transaction
+    await this.prisma.$transaction(async (tx) => {
+      // Update agent approval status
+      await tx.agent.update({
+        where: { id: agentId },
+        data: {
+          approvalStatus: 'APPROVED',
+          approvedAt: new Date(),
+          approvedById: approverId,
+          pendingGroupId: null, // Clear pending group
+        },
+      });
+
+      // Create group membership if there's a pending group
+      if (agent.pendingGroupId) {
+        await tx.agentGroupMembership.create({
+          data: {
+            agentId,
+            groupId: agent.pendingGroupId,
+            role: 'member',
+          },
+        });
+      }
+    });
+
+    // Invite agent to Slack channel (best effort, outside transaction)
+    if (group?.slackChannelId && agent.slackUserId) {
+      try {
+        await this.slackService.inviteUserToChannel(group.slackChannelId, agent.slackUserId);
+        this.logger.log(`Invited agent ${agent.name} to Slack channel ${group.slackChannelName}`);
+      } catch (error) {
+        this.logger.warn(`Failed to invite agent to Slack: ${error.message}`);
+      }
+    }
+
+    this.logger.log(
+      `Agent "${agent.name}" approved by ${approverId}${group ? ` and added to group "${group.name}"` : ''}`,
+    );
+
+    // Return updated agent
+    return this.getAgent(tenantId, agentId);
+  }
+
+  /**
+   * Reject an agent registration.
+   */
+  async rejectAgent(tenantId: string, agentId: string, rejecterId: string, dto?: RejectAgentDto) {
+    // Find the pending agent
+    const agent = await this.prisma.agent.findFirst({
+      where: { id: agentId, tenantId },
+    });
+
+    if (!agent) {
+      throw new NotFoundException('Agent not found');
+    }
+
+    if (agent.approvalStatus !== 'PENDING') {
+      throw new BadRequestException(`Agent is not pending approval (status: ${agent.approvalStatus})`);
+    }
+
+    // Update agent
+    await this.prisma.agent.update({
+      where: { id: agentId },
+      data: {
+        approvalStatus: 'REJECTED',
+        rejectedAt: new Date(),
+        rejectedById: rejecterId,
+        rejectionReason: dto?.reason || null,
+        pendingGroupId: null, // Clear pending group
+        isActive: false, // Deactivate rejected agent
+      },
+    });
+
+    this.logger.log(
+      `Agent "${agent.name}" rejected by ${rejecterId}${dto?.reason ? `: ${dto.reason}` : ''}`,
+    );
+
+    // Return updated agent
+    return this.getAgent(tenantId, agentId);
   }
 }

@@ -128,6 +128,44 @@ export interface SlackThreadReplyResult {
   error?: string;
 }
 
+// =========================================================================
+// Registration Types
+// =========================================================================
+
+export interface RegisterAgentRequest {
+  registrationToken: string;
+  name: string;
+  clientId: string;
+  clientSecret: string;
+  description?: string;
+  email?: string;
+  capabilities?: string[];
+}
+
+export interface RegisterAgentResult {
+  id: string;
+  clientId: string;
+  name: string;
+  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
+  pendingGroup?: {
+    id: string;
+    name: string;
+  };
+  message: string;
+}
+
+export interface RegistrationStatusResult {
+  id: string;
+  clientId: string;
+  name: string;
+  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
+  pendingGroup?: {
+    id: string;
+    name: string;
+  };
+  rejectionReason?: string;
+}
+
 export class NexusClient {
   private config: NexusConfig;
   private token: AuthToken | null = null;
@@ -322,6 +360,81 @@ export class NexusClient {
       broadcast,
     });
   }
+
+  // =========================================================================
+  // Registration APIs (unauthenticated)
+  // =========================================================================
+
+  /**
+   * Register a new agent using a registration token.
+   * This endpoint does NOT require authentication - the token serves as authorization.
+   */
+  async registerAgent(data: RegisterAgentRequest): Promise<RegisterAgentResult> {
+    const response = await fetch(`${this.config.baseUrl}/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: `HTTP ${response.status}` })) as { message?: string };
+      throw new Error(error.message || `Registration failed: ${response.status}`);
+    }
+
+    return response.json() as Promise<RegisterAgentResult>;
+  }
+
+  /**
+   * Check registration/authentication status by attempting to authenticate.
+   * Returns the status or error message.
+   */
+  async checkAuthStatus(clientId: string, clientSecret: string): Promise<RegistrationStatusResult> {
+    const response = await fetch(`${this.config.baseUrl}/auth/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+      }),
+    });
+
+    if (response.ok) {
+      // Successfully authenticated - agent is approved
+      return {
+        id: '',
+        clientId,
+        name: '',
+        approvalStatus: 'APPROVED',
+      };
+    }
+
+    const error = await response.json().catch(() => ({ message: 'Unknown error' })) as { message?: string };
+    const message = error.message || '';
+
+    // Parse the error message to determine status
+    if (message.includes('pending')) {
+      return {
+        id: '',
+        clientId,
+        name: '',
+        approvalStatus: 'PENDING',
+      };
+    } else if (message.includes('rejected')) {
+      return {
+        id: '',
+        clientId,
+        name: '',
+        approvalStatus: 'REJECTED',
+        rejectionReason: message,
+      };
+    }
+
+    throw new Error(message || 'Authentication check failed');
+  }
 }
 
 /**
@@ -346,5 +459,35 @@ export function createNexusClientFromEnv(): NexusClient {
     baseUrl,
     clientId,
     clientSecret,
+  });
+}
+
+/**
+ * Check if we're in bootstrap mode (only NEXUS_URL set, no credentials)
+ */
+export function isBootstrapMode(): boolean {
+  const baseUrl = process.env.NEXUS_URL;
+  const clientId = process.env.NEXUS_CLIENT_ID;
+  const clientSecret = process.env.NEXUS_CLIENT_SECRET;
+
+  return !!baseUrl && (!clientId || !clientSecret);
+}
+
+/**
+ * Create a NexusClient for bootstrap mode (registration only)
+ * Only requires NEXUS_URL - credentials are not needed for registration
+ */
+export function createBootstrapClient(): NexusClient {
+  const baseUrl = process.env.NEXUS_URL;
+
+  if (!baseUrl) {
+    throw new Error('NEXUS_URL environment variable is required');
+  }
+
+  // Create client with placeholder credentials - they won't be used for registration
+  return new NexusClient({
+    baseUrl,
+    clientId: 'bootstrap',
+    clientSecret: 'bootstrap',
   });
 }

@@ -114,6 +114,7 @@ function transformStats(stats: ObserverStats): DashboardStats {
     totalProjects: stats.totalProjects,
     availableTasks: stats.pendingTasks,
     claimedTasks: stats.activeTasks,
+    pendingApprovals: stats.pendingApprovals,
   };
 }
 
@@ -217,6 +218,7 @@ export function useNexus(): UseNexusReturn {
     totalProjects: 0,
     availableTasks: 0,
     claimedTasks: 0,
+    pendingApprovals: 0,
   });
   const [error, setError] = useState<string | null>(null);
 
