@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { ObserverService } from './observer.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateAgentDto, UpdateAgentDto, CreateRegistrationTokenDto, RejectAgentDto } from './dto';
+import { CreateAgentDto, UpdateAgentDto, CreateRegistrationTokenDto, RejectAgentDto, CreateTaskDto } from './dto';
 
 /**
  * Observer Controller.
@@ -186,6 +186,17 @@ export class ObserverController {
   @Get('tasks')
   async getTaskQueue(@Request() req) {
     return this.observerService.getTaskQueue(req.user.tenantId);
+  }
+
+  /**
+   * Create a task directly (without ClickUp integration).
+   *
+   * Required: projectId, title
+   * Optional: description, priority (1-4, default 3)
+   */
+  @Post('tasks')
+  async createTask(@Request() req, @Body() dto: CreateTaskDto) {
+    return this.observerService.createTask(req.user.tenantId, dto);
   }
 
   // =========================================================================

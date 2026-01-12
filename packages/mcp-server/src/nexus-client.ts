@@ -321,6 +321,21 @@ export class NexusClient {
     return this.request<UpdateStatusResult>('PATCH', `/tasks/${taskId}/status`, { status });
   }
 
+  /**
+   * Create a new task
+   */
+  async createTask(
+    projectId: string,
+    title: string,
+    priority?: number
+  ): Promise<Task> {
+    return this.request<Task>('POST', '/observer/tasks', {
+      projectId,
+      title,
+      priority,
+    });
+  }
+
   // =========================================================================
   // Observer APIs
   // =========================================================================

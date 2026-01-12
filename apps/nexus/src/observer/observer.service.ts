@@ -460,6 +460,74 @@ export class ObserverService {
   }
 
   // =========================================================================
+  // TASK MANAGEMENT
+  // =========================================================================
+
+  /**
+   * Generate a unique task ID with "TASK-" prefix.
+   */
+  private generateTaskId(): string {
+    return `TASK-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+  }
+
+  /**
+   * Create a task directly (without ClickUp integration).
+   * Useful for testing and manual task creation.
+   */
+  async createTask(
+    tenantId: string,
+    data: {
+      projectId: string;
+      title: string;
+      priority?: number;
+    },
+  ) {
+    // Verify project exists and belongs to tenant
+    const project = await this.prisma.project.findFirst({
+      where: { id: data.projectId, tenantId, isActive: true },
+      include: {
+        group: {
+          select: { id: true, name: true, slackChannelId: true },
+        },
+      },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    // Generate a synthetic ClickUp task ID
+    const clickupTaskId = this.generateTaskId();
+
+    // Create the task
+    const task = await this.prisma.task.create({
+      data: {
+        clickupTaskId,
+        title: data.title,
+        priority: data.priority ?? 3,
+        status: 'TODO',
+        projectId: data.projectId,
+        slackChannelId: project.slackChannelId || project.group?.slackChannelId,
+      },
+      include: {
+        project: {
+          select: {
+            id: true,
+            name: true,
+            group: {
+              select: { id: true, name: true },
+            },
+          },
+        },
+      },
+    });
+
+    this.logger.log(`Task created: ${task.id} - ${task.title}`);
+
+    return task;
+  }
+
+  // =========================================================================
   // REGISTRATION TOKEN MANAGEMENT
   // =========================================================================
 

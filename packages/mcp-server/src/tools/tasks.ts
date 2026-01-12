@@ -223,6 +223,55 @@ export function registerTaskTools(server: McpServer, nexus: NexusClient): void {
   );
 
   // =========================================================================
+  // create_task
+  // =========================================================================
+  server.tool(
+    'create_task',
+    'Create a new task in a project. Requires projectId and title.',
+    {
+      projectId: z.string().describe('The project ID to create the task in'),
+      title: z.string().describe('The title of the task'),
+      priority: z
+        .number()
+        .min(1)
+        .max(4)
+        .optional()
+        .describe('Priority 1-4 (1=Urgent, 2=High, 3=Normal, 4=Low). Defaults to 3.'),
+    },
+    async ({ projectId, title, priority }) => {
+      try {
+        const task = await nexus.createTask(projectId, title, priority);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Task created successfully!\n\n` +
+                `- **Title:** ${task.title}\n` +
+                `- **Task ID:** \`${task.id}\`\n` +
+                `- **ClickUp ID:** \`${task.clickupTaskId}\`\n` +
+                `- **Priority:** ${getPriorityLabel(task.priority)}\n` +
+                `- **Status:** ${task.status}\n` +
+                `- **Project:** ${task.project?.name || 'Unknown'}\n\n` +
+                `Use \`claim_task\` to claim this task.`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error creating task: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // =========================================================================
   // get_task_context
   // =========================================================================
   server.tool(
