@@ -65,8 +65,12 @@ A Kubernetes-native orchestration platform for AI agents.
 - [x] Post messages to channels
 - [x] Auto-create threads when agent posts to task
 - [x] Thread replies with broadcast option
-- [ ] Slack user linking to agents
-- [ ] Incoming webhooks from Slack
+- [x] Autonomous agent identities (custom username/emoji per agent)
+- [x] Read Slack thread messages (get_task_slack_thread)
+- [x] Group-based authorization for thread access
+- [x] **Slack Events API (push notifications)** - Webhook endpoint exists, needs app configuration
+- [x] SLACK_MESSAGE event broadcasting to agents via WebSocket
+- [ ] Slack user linking to agents (optional)
 
 ### Observer Dashboard
 - [x] Real-time agent status display
@@ -87,9 +91,101 @@ A Kubernetes-native orchestration platform for AI agents.
 - [x] Update task status
 - [x] Get task context
 - [x] Post to Slack thread
+- [x] Read Slack thread messages
 - [x] List agents
 - [x] List projects
 - [x] Dashboard stats
+- [x] Self-service registration (register_agent)
+- [x] Registration status check
+- [x] Multi-agent profile support (PID-based locking)
+- [x] whoami tool
+- [x] deregister_agent tool
+
+---
+
+## Roadmap: Autonomous Agent Platform
+
+### Phase 1: Real-Time Foundation (Week 1) 🔥 CRITICAL
+
+**Goal:** Enable real-time agent-human collaboration in Slack
+
+#### 1.1 Slack Events API Integration
+- [ ] Configure Slack app for Event Subscriptions
+- [ ] Handle `message.channels` events (new messages in channels)
+- [ ] Handle `message.groups` events (private channels)
+- [ ] Handle `app_mention` events (@bot mentions)
+- [ ] Broadcast SLACK_MESSAGE events to agents via WebSocket
+- [ ] Route messages to relevant agents (by group membership)
+- [ ] Store message history for context
+
+**Impact:** Agents get instant push notifications instead of polling
+
+#### 1.2 Agent Event Loop Enhancement
+- [ ] Add SLACK_MESSAGE event type to WebSocket gateway
+- [ ] Agents subscribe to Slack messages in their groups
+- [ ] Example agent: Auto-respond to @mentions
+
+**Deliverable:** Humans post in Slack → Agents notified instantly → Can respond
+
+---
+
+### Phase 2: Agent SDK (Weeks 2-3) 🔥 CRITICAL
+
+**Goal:** Make it easy to build autonomous agents
+
+#### 2.1 TypeScript Agent SDK
+- [ ] Create `@oblivion/agent-sdk` package
+- [ ] WebSocket client wrapper
+- [ ] Event handler decorators (`@onTask`, `@onSlackMessage`)
+- [ ] Task claiming/status helpers
+- [ ] Slack posting helpers
+- [ ] Authentication/registration built-in
+
+#### 2.2 Example Agents
+- [ ] KAgent (Kubernetes operations - kubectl wrapper)
+- [ ] TestRunner (Run tests, report results)
+- [ ] SecurityScanner (CVE scanning, dependency audits)
+
+**Deliverable:** Build a new agent in <100 lines of code
+
+---
+
+### Phase 3: Capability-Based Routing (Week 4) 🔥 HIGH
+
+**Goal:** Smart task assignment based on agent capabilities
+
+#### 3.1 Capability Matching
+- [ ] Task tags → required capabilities mapping
+- [ ] Filter available tasks by agent capabilities
+- [ ] Priority boost for exact capability matches
+- [ ] "No capable agent" alerts
+
+#### 3.2 Tool Registry
+- [ ] Agents declare available tools/actions
+- [ ] Humans can query: "Which agent can scale deployments?"
+- [ ] Task creation suggests capable agents
+
+**Deliverable:** Right agent auto-gets right task
+
+---
+
+### Phase 4: Enhanced Features (Ongoing)
+
+#### 4.1 Long-Running Tasks
+- [ ] Progress tracking (0-100%)
+- [ ] Periodic status updates to Slack
+- [ ] Pause/resume support
+- [ ] Timeout handling
+
+#### 4.2 Agent-to-Agent Messaging
+- [ ] Direct messaging via WebSocket
+- [ ] Collaboration requests ("Can you review this?")
+- [ ] All visible in Slack for humans
+
+#### 4.3 Task Dependencies
+- [ ] Task chains ("Deploy after tests pass")
+- [ ] Conditional execution
+- [ ] Rollback on failure
 
 ---
 

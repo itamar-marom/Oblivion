@@ -35,39 +35,39 @@ echo -e "${BLUE}Step 3/6: Installing Kong Ingress Controller...${NC}"
 helm repo add kong https://charts.konghq.com >/dev/null 2>&1 || true
 helm repo update >/dev/null 2>&1
 
-if helm list -n kong | grep -q kong; then
-  echo "⚠️  Kong already installed. Skipping."
-else
-  helm install kong kong/kong \
-    -n kong \
-    --create-namespace \
-    --set ingressController.enabled=true \
-    --set proxy.type=NodePort \
-    --set proxy.http.nodePort=30080 \
-    --set proxy.https.nodePort=30443 \
-    --wait \
-    --timeout 5m
-  echo -e "${GREEN}✅ Kong Ingress Controller installed${NC}"
-fi
-echo ""
+# if helm list -n kong | grep -q kong; then
+#   echo "⚠️  Kong already installed. Skipping."
+# else
+#   helm install kong kong/kong \
+#     -n kong \
+#     --create-namespace \
+#     --set ingressController.enabled=true \
+#     --set proxy.type=NodePort \
+#     --set proxy.http.nodePort=30080 \
+#     --set proxy.https.nodePort=30443 \
+#     --wait \
+#     --timeout 5m
+#   echo -e "${GREEN}✅ Kong Ingress Controller installed${NC}"
+# fi
+# echo ""
 
-# Step 4: Install External Secrets Operator
-echo -e "${BLUE}Step 4/6: Installing External Secrets Operator...${NC}"
-helm repo add external-secrets https://charts.external-secrets.io >/dev/null 2>&1 || true
-helm repo update >/dev/null 2>&1
+# # Step 4: Install External Secrets Operator
+# echo -e "${BLUE}Step 4/6: Installing External Secrets Operator...${NC}"
+# helm repo add external-secrets https://charts.external-secrets.io >/dev/null 2>&1 || true
+# helm repo update >/dev/null 2>&1
 
-if helm list -n external-secrets-system | grep -q external-secrets; then
-  echo "⚠️  External Secrets Operator already installed. Skipping."
-else
-  helm install external-secrets \
-    external-secrets/external-secrets \
-    -n external-secrets-system \
-    --create-namespace \
-    --wait \
-    --timeout 5m
-  echo -e "${GREEN}✅ External Secrets Operator installed${NC}"
-fi
-echo ""
+# if helm list -n external-secrets-system | grep -q external-secrets; then
+#   echo "⚠️  External Secrets Operator already installed. Skipping."
+# else
+#   helm install external-secrets \
+#     external-secrets/external-secrets \
+#     -n external-secrets-system \
+#     --create-namespace \
+#     --wait \
+#     --timeout 5m
+#   echo -e "${GREEN}✅ External Secrets Operator installed${NC}"
+# fi
+# echo ""
 
 # Step 5: Deploy Oblivion infrastructure
 echo -e "${BLUE}Step 5/6: Deploying Oblivion infrastructure (PostgreSQL, Redis, Qdrant)...${NC}"

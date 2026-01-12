@@ -4,7 +4,7 @@ import { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../../queue/queue.module';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AgentGateway, createEvent, EventType } from '../../gateway';
-import type { ContextUpdatePayload } from '../../gateway/dto/events.dto';
+import type { ContextUpdatePayload, SlackMessagePayload } from '../../gateway/dto/events.dto';
 import { ClickUpService } from '../../integrations/clickup/clickup.service';
 import { SlackService } from '../../integrations/slack/slack.service';
 import { ProjectsService } from '../../projects/projects.service';
@@ -351,30 +351,27 @@ export class WebhookProcessor extends WorkerHost {
   /**
    * Handle new message in channel/thread.
    *
+   * Routes messages from both project channels and group channels to agents.
    * If in a tracked thread, sync to ClickUp and emit CONTEXT_UPDATE.
    */
   private async handleSlackMessage(data: SlackWebhookJob): Promise<void> {
-    this.logger.log(`Slack message in channel ${data.channelId}`);
+    this.logger.log(`Slack message in channel ${data.channelId}${data.threadTs ? ' (thread)' : ''}`);
 
-    // Only process thread replies
-    if (!data.threadTs) {
-      this.logger.debug('Not a thread reply, ignoring');
-      return;
-    }
-
-    // Find task by Slack thread
-    const task = await this.prisma.task.findFirst({
-      where: {
-        slackChannelId: data.channelId,
-        slackThreadTs: data.threadTs,
-      },
+    // Try to find a project that owns this channel
+    const project = await this.prisma.project.findFirst({
+      where: { slackChannelId: data.channelId, isActive: true },
       include: {
-        project: {
+        group: {
           include: {
-            group: {
+            members: {
+              where: { agent: { isActive: true } },
               include: {
-                members: {
-                  include: { agent: true },
+                agent: {
+                  select: {
+                    id: true,
+                    name: true,
+                    clientId: true,
+                  },
                 },
               },
             },
@@ -383,50 +380,115 @@ export class WebhookProcessor extends WorkerHost {
       },
     });
 
-    if (!task) {
-      this.logger.debug(`Thread ${data.threadTs} not tracked, ignoring`);
+    // If not a project channel, check if it's a group channel
+    const group = !project
+      ? await this.prisma.group.findFirst({
+          where: { slackChannelId: data.channelId, isActive: true },
+          include: {
+            members: {
+              where: { agent: { isActive: true } },
+              include: {
+                agent: {
+                  select: {
+                    id: true,
+                    name: true,
+                    clientId: true,
+                  },
+                },
+              },
+            },
+          },
+        })
+      : null;
+
+    // If neither project nor group channel, ignore
+    if (!project && !group) {
+      this.logger.debug(`Message in non-Oblivion channel: ${data.channelId}`);
       return;
     }
 
-    // Extract author and content from the job data
-    const author = data.userId || 'Unknown';
-    const content = data.text || '';
+    // Determine the group and agents to notify
+    const targetGroup = project ? project.group : group!;
+    const agentIds = targetGroup.members.map((m) => m.agent.id);
 
-    // Sync message to ClickUp as comment
-    if (this.clickUpService.isConfigured()) {
-      const commentText = `[Slack - ${author}] ${content}`;
-      const result = await this.clickUpService.postComment(
-        task.clickupTaskId,
-        commentText,
-      );
+    // If this is a thread message, try to find the associated task
+    let task: { id: string; clickupTaskId: string; title: string | null } | null = null;
+    if (data.threadTs) {
+      task = await this.prisma.task.findFirst({
+        where: {
+          slackChannelId: data.channelId,
+          slackThreadTs: data.threadTs,
+        },
+        select: {
+          id: true,
+          clickupTaskId: true,
+          title: true,
+        },
+      });
 
-      if (result) {
-        this.logger.log(`Message synced to ClickUp task ${task.clickupTaskId}`);
+      // Sync to ClickUp if this is a tracked task thread
+      if (task && this.clickUpService.isConfigured()) {
+        const author = data.userId || 'Unknown';
+        const content = data.text || '';
+        const commentText = `[Slack - ${author}] ${content}`;
+
+        const result = await this.clickUpService.postComment(
+          task.clickupTaskId,
+          commentText,
+        );
+
+        if (result) {
+          this.logger.log(`Message synced to ClickUp task ${task.clickupTaskId}`);
+        }
       }
     }
 
-    // Emit CONTEXT_UPDATE to group agents
-    const agents = task.project.group.members
-      .map((m) => m.agent)
-      .filter((a) => a.isActive);
-
-    const payload: ContextUpdatePayload = {
-      taskId: task.id,
-      slackChannelId: data.channelId,
-      slackThreadTs: data.threadTs!,
+    // Broadcast SLACK_MESSAGE event to all agents in the group
+    const payload: SlackMessagePayload = {
+      channelId: data.channelId,
       messageTs: data.messageTs,
-      author,
-      content,
-      isHuman: true,
+      threadTs: data.threadTs,
+      text: data.text || '',
+      user: data.userId || 'unknown',
+      taskId: task?.id || undefined,
+      taskClickupId: task?.clickupTaskId || undefined,
+      projectId: project?.id || '',
+      projectName: project?.name || '',
+      groupId: targetGroup.id,
+      groupName: targetGroup.name,
     };
 
-    const event = createEvent(EventType.CONTEXT_UPDATE, payload);
+    const slackMessageEvent = createEvent(EventType.SLACK_MESSAGE, payload);
 
-    for (const agent of agents) {
-      await this.gateway.emitToAgent(agent.id, event);
+    const channelType = project ? 'project' : 'group';
+    this.logger.log(
+      `Broadcasting SLACK_MESSAGE to ${agentIds.length} agents in ${channelType} "${project?.name || targetGroup.name}"`,
+    );
+
+    for (const agentId of agentIds) {
+      await this.gateway.emitToAgent(agentId, slackMessageEvent);
     }
 
-    this.logger.log(`CONTEXT_UPDATE sent for thread ${data.threadTs}`);
+    // Also emit CONTEXT_UPDATE for backward compatibility (if it's a task thread)
+    if (task && data.threadTs) {
+      const contextPayload: ContextUpdatePayload = {
+        taskId: task.id,
+        slackChannelId: data.channelId,
+        slackThreadTs: data.threadTs,
+        messageTs: data.messageTs,
+        author: data.userId || 'Unknown',
+        content: data.text || '',
+        isHuman: true,
+      };
+
+      const contextEvent = createEvent(EventType.CONTEXT_UPDATE, contextPayload);
+
+      for (const agentId of agentIds) {
+        await this.gateway.emitToAgent(agentId, contextEvent);
+      }
+
+      this.logger.log(`CONTEXT_UPDATE sent for task thread ${data.threadTs}`);
+    }
   }
 
   /**

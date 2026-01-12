@@ -14,6 +14,7 @@ export enum EventType {
   TASK_AVAILABLE = 'task_available', // New task available for claiming
   TASK_CLAIMED = 'task_claimed', // Task was claimed by another agent
   CONTEXT_UPDATE = 'context_update',
+  SLACK_MESSAGE = 'slack_message', // New message in Slack channel/thread
   WAKE_UP = 'wake_up',
   TOOL_RESULT = 'tool_result',
 
@@ -199,6 +200,28 @@ export interface AgentStatusChangedPayload {
   newStatus: 'connected' | 'idle' | 'working' | 'error';
   taskId?: string;
   changedAt: string;
+}
+
+// =============================================================================
+// SLACK EVENTS (Real-time Slack message notifications)
+// =============================================================================
+
+/**
+ * SLACK_MESSAGE: New message posted in Slack channel or thread.
+ * Broadcast to all agents in the group when message is posted.
+ */
+export interface SlackMessagePayload {
+  channelId: string;
+  messageTs: string;
+  threadTs?: string;
+  text: string;
+  user: string;
+  taskId?: string;
+  taskClickupId?: string;
+  projectId: string;
+  projectName: string;
+  groupId: string;
+  groupName: string;
 }
 
 /**
