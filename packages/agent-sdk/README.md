@@ -171,6 +171,7 @@ import {
   ConnectionError,
   ConfigError,
   TaskError,
+  TimeoutError,
 } from '@oblivion/agent-sdk';
 
 try {
@@ -180,6 +181,8 @@ try {
     console.error('Authentication failed:', error.statusCode);
   } else if (error instanceof ConnectionError) {
     console.error('Connection failed:', error.reason);
+  } else if (error instanceof TimeoutError) {
+    console.error('Request timed out:', error.timeoutMs, 'ms');
   }
 }
 ```

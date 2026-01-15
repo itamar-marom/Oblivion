@@ -16,6 +16,11 @@ A Kubernetes-native orchestration platform for AI agents.
 - **Location:** `packages/mcp-server`
 - **Tech:** TypeScript, MCP Protocol
 
+### Agent SDK
+- **Location:** `packages/agent-sdk`
+- **Tech:** TypeScript, Socket.io-client
+- **Features:** OAuth2 auth, WebSocket client, REST API client, typed events
+
 ---
 
 ## Features
@@ -121,8 +126,8 @@ A Kubernetes-native orchestration platform for AI agents.
 **Impact:** Agents get instant push notifications instead of polling
 
 #### 1.2 Agent Event Loop Enhancement
-- [ ] Add SLACK_MESSAGE event type to WebSocket gateway
-- [ ] Agents subscribe to Slack messages in their groups
+- [x] Add SLACK_MESSAGE event type to WebSocket gateway
+- [x] Agents subscribe to Slack messages in their groups
 - [ ] Example agent: Auto-respond to @mentions
 
 **Deliverable:** Humans post in Slack → Agents notified instantly → Can respond
@@ -134,19 +139,22 @@ A Kubernetes-native orchestration platform for AI agents.
 **Goal:** Make it easy to build autonomous agents
 
 #### 2.1 TypeScript Agent SDK
-- [ ] Create `@oblivion/agent-sdk` package
-- [ ] WebSocket client wrapper
-- [ ] Event handler decorators (`@onTask`, `@onSlackMessage`)
-- [ ] Task claiming/status helpers
-- [ ] Slack posting helpers
-- [ ] Authentication/registration built-in
+- [x] Create `@oblivion/agent-sdk` package
+- [x] WebSocket client wrapper (Socket.io with auto-reconnect + jitter)
+- [x] Event-driven API with typed EventEmitter (`agent.on('task_available', ...)`)
+- [x] Task claiming/status helpers
+- [x] Slack posting helpers
+- [x] OAuth2 authentication with auto-refresh
+- [x] HTTP client with 401 retry + request timeouts
+- [x] DEBUG-based logging for all modules
+- [x] Comprehensive error classes (AuthError, ApiError, TimeoutError, etc.)
 
 #### 2.2 Example Agents
 - [ ] KAgent (Kubernetes operations - kubectl wrapper)
 - [ ] TestRunner (Run tests, report results)
 - [ ] SecurityScanner (CVE scanning, dependency audits)
 
-**Deliverable:** Build a new agent in <100 lines of code
+**Deliverable:** Build a new agent in <100 lines of code ✅ DONE
 
 ---
 

@@ -12,43 +12,55 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiQuery,
+  ApiBody,
+} from '@nestjs/swagger';
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto, UpdateProjectDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 /**
- * Projects Controller.
- *
- * REST API for managing Work Scopes (Projects).
- *
- * Endpoints:
- * - POST   /projects              Create a new project under a group
- * - GET    /projects              List all projects (filterable by group)
- * - GET    /projects/:id          Get project details with tasks
- * - GET    /projects/:id/stats    Get task statistics for project
- * - PATCH  /projects/:id          Update project (including oblivionTag)
- * - DELETE /projects/:id          Archive project
+ * Projects Controller - REST API for managing Work Scopes (Projects).
  */
+@ApiTags('Projects')
+@ApiBearerAuth('JWT')
 @Controller('projects')
 @UseGuards(JwtAuthGuard)
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
-  /**
-   * Create a new project under a group.
-   * Auto-creates a Slack channel for the project.
-   */
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Create a project',
+    description:
+      'Create a new project under a group. Auto-creates a Slack channel. ' +
+      'The @tag is used for routing tasks from ClickUp.',
+  })
+  @ApiBody({ type: CreateProjectDto })
+  @ApiResponse({ status: 201, description: 'Project created' })
   async create(@Request() req, @Body() dto: CreateProjectDto) {
     return this.projectsService.create(req.user.tenantId, dto);
   }
 
-  /**
-   * List all projects for the tenant.
-   * Can be filtered by group.
-   */
   @Get()
+  @ApiOperation({
+    summary: 'List projects',
+    description: 'Get all projects. Optionally filter by group.',
+  })
+  @ApiQuery({ name: 'groupId', required: false, description: 'Filter by group ID' })
+  @ApiQuery({
+    name: 'includeInactive',
+    required: false,
+    description: 'Include archived projects',
+  })
+  @ApiResponse({ status: 200, description: 'List of projects' })
   async findAll(
     @Request() req,
     @Query('groupId') groupId?: string,
@@ -61,27 +73,36 @@ export class ProjectsController {
     );
   }
 
-  /**
-   * Get a single project with tasks.
-   */
   @Get(':id')
+  @ApiOperation({
+    summary: 'Get project details',
+    description: 'Get a project with its tasks.',
+  })
+  @ApiParam({ name: 'id', description: 'Project ID (UUID)' })
+  @ApiResponse({ status: 200, description: 'Project details' })
   async findOne(@Request() req, @Param('id') id: string) {
     return this.projectsService.findOne(req.user.tenantId, id);
   }
 
-  /**
-   * Get task statistics for a project.
-   */
   @Get(':id/stats')
+  @ApiOperation({
+    summary: 'Get project stats',
+    description: 'Get task statistics for a project (counts by status).',
+  })
+  @ApiParam({ name: 'id', description: 'Project ID (UUID)' })
+  @ApiResponse({ status: 200, description: 'Task statistics' })
   async getTaskStats(@Request() req, @Param('id') id: string) {
     return this.projectsService.getTaskStats(req.user.tenantId, id);
   }
 
-  /**
-   * Update a project.
-   * Can update name, description, oblivionTag, and isActive.
-   */
   @Patch(':id')
+  @ApiOperation({
+    summary: 'Update project',
+    description: 'Update project name, description, @tag, or status.',
+  })
+  @ApiParam({ name: 'id', description: 'Project ID (UUID)' })
+  @ApiBody({ type: UpdateProjectDto })
+  @ApiResponse({ status: 200, description: 'Project updated' })
   async update(
     @Request() req,
     @Param('id') id: string,
@@ -90,11 +111,13 @@ export class ProjectsController {
     return this.projectsService.update(req.user.tenantId, id, dto);
   }
 
-  /**
-   * Archive a project (soft delete).
-   * This also archives the associated Slack channel.
-   */
   @Delete(':id')
+  @ApiOperation({
+    summary: 'Archive project',
+    description: 'Soft delete a project. Also archives the Slack channel.',
+  })
+  @ApiParam({ name: 'id', description: 'Project ID (UUID)' })
+  @ApiResponse({ status: 200, description: 'Project archived' })
   async archive(@Request() req, @Param('id') id: string) {
     return this.projectsService.archive(req.user.tenantId, id);
   }
