@@ -60,7 +60,8 @@ const config: Config = {
       title: 'Oblivion',
       logo: {
         alt: 'Oblivion Logo',
-        src: 'img/logo.svg',
+        src: 'img/oblivion-icon.jpeg',
+        style: { borderRadius: '8px' },
       },
       items: [
         {
