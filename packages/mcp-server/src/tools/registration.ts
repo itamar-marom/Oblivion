@@ -74,7 +74,7 @@ export function registerRegistrationTools(server: McpServer, nexus: NexusClient)
         // Get NEXUS_URL from env (required for MCP to be running)
         const nexusUrl = process.env.NEXUS_URL;
         if (nexusUrl) {
-          saveCredentials({
+          await saveCredentials({
             nexusUrl,
             clientId,
             clientSecret,
@@ -218,7 +218,7 @@ export function registerRegistrationTools(server: McpServer, nexus: NexusClient)
     },
     async ({ profile }) => {
       try {
-        const profiles = listProfiles();
+        const profiles = await listProfiles();
 
         if (profiles.length === 0) {
           return {
@@ -235,7 +235,7 @@ export function registerRegistrationTools(server: McpServer, nexus: NexusClient)
 
         if (profile === 'all') {
           // Clear all profiles
-          clearCredentials();
+          await clearCredentials();
           return {
             content: [
               {
@@ -252,10 +252,10 @@ export function registerRegistrationTools(server: McpServer, nexus: NexusClient)
         }
 
         // Clear specific profile (or active if not specified)
-        const success = clearCredentials(profile);
+        const success = await clearCredentials(profile);
 
         if (success) {
-          const remaining = listProfiles();
+          const remaining = await listProfiles();
           return {
             content: [
               {

@@ -22,7 +22,7 @@ export function registerAgentTools(server: McpServer, nexus: NexusClient): void 
     {},
     async () => {
       try {
-        const creds = getEffectiveCredentials();
+        const creds = await getEffectiveCredentials();
 
         if (!creds.clientId) {
           return {

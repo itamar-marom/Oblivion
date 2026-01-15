@@ -18,12 +18,23 @@ import { registerTaskTools } from './tools/tasks.js';
 import { registerAgentTools } from './tools/agents.js';
 import { registerSlackTools } from './tools/slack.js';
 import { registerRegistrationTools } from './tools/registration.js';
+import { registerHealthTools } from './tools/health.js';
 
 /**
- * Check if we're in bootstrap mode by checking effective credentials
+ * Effective credentials type returned by getEffectiveCredentials
  */
-export function isBootstrapMode(): boolean {
-  const creds = getEffectiveCredentials();
+export interface EffectiveCreds {
+  nexusUrl?: string;
+  clientId?: string;
+  clientSecret?: string;
+  selectedProfile?: string;
+  selectionMethod?: string;
+}
+
+/**
+ * Check if we're in bootstrap mode by checking credentials
+ */
+export function isBootstrapMode(creds: EffectiveCreds): boolean {
   return !!creds.nexusUrl && (!creds.clientId || !creds.clientSecret);
 }
 
@@ -33,7 +44,7 @@ export function isBootstrapMode(): boolean {
  * All tools are always registered. No need to switch modes - one config works
  * for both bootstrap (registration only) and full operation.
  */
-export function createServer(nexus?: NexusClient): McpServer {
+export async function createServer(nexus?: NexusClient): Promise<McpServer> {
   const server = new McpServer({
     name: 'oblivion',
     version: '0.1.0',
@@ -46,13 +57,13 @@ export function createServer(nexus?: NexusClient): McpServer {
     nexusClient = nexus;
   } else {
     // Load credentials and set env vars for nexus-client to use
-    const creds = getEffectiveCredentials();
+    const creds = await getEffectiveCredentials();
 
     if (creds.nexusUrl) process.env.NEXUS_URL = creds.nexusUrl;
     if (creds.clientId) process.env.NEXUS_CLIENT_ID = creds.clientId;
     if (creds.clientSecret) process.env.NEXUS_CLIENT_SECRET = creds.clientSecret;
 
-    const bootstrapMode = isBootstrapMode();
+    const bootstrapMode = isBootstrapMode(creds);
     nexusClient = bootstrapMode ? createBootstrapClient() : createNexusClientFromEnv();
   }
 
@@ -61,6 +72,7 @@ export function createServer(nexus?: NexusClient): McpServer {
   registerAgentTools(server, nexusClient);
   registerSlackTools(server, nexusClient);
   registerRegistrationTools(server, nexusClient);
+  registerHealthTools(server, nexusClient);
 
   return server;
 }

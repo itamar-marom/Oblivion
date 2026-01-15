@@ -15,9 +15,11 @@
  * Profile selection priority:
  * 1. OBLIVION_PROFILE env var (explicit selection)
  * 2. activeProfile field in credentials file (last used)
+ *
+ * All file operations are async to avoid blocking the event loop.
  */
 
-import * as fs from 'fs';
+import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import {
@@ -53,12 +55,14 @@ function getCredentialsPath(): string {
 /**
  * Ensure the .oblivion directory exists with secure permissions
  */
-function ensureOblivionDir(): string {
+async function ensureOblivionDir(): Promise<string> {
   const homeDir = os.homedir();
   const oblivionDir = path.join(homeDir, '.oblivion');
 
-  if (!fs.existsSync(oblivionDir)) {
-    fs.mkdirSync(oblivionDir, { mode: 0o700 }); // rwx------ (owner only)
+  try {
+    await fs.access(oblivionDir);
+  } catch {
+    await fs.mkdir(oblivionDir, { mode: 0o700 }); // rwx------ (owner only)
   }
 
   return oblivionDir;
@@ -67,17 +71,16 @@ function ensureOblivionDir(): string {
 /**
  * Load the credentials file (or create empty one)
  */
-function loadCredentialsFile(): CredentialsFile {
+async function loadCredentialsFile(): Promise<CredentialsFile> {
   const credPath = getCredentialsPath();
 
-  if (!fs.existsSync(credPath)) {
-    return { agents: {} };
-  }
-
   try {
-    const data = fs.readFileSync(credPath, 'utf-8');
+    const data = await fs.readFile(credPath, 'utf-8');
     return JSON.parse(data) as CredentialsFile;
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { agents: {} };
+    }
     console.error(`⚠️  Failed to parse credentials file: ${error instanceof Error ? error.message : String(error)}`);
     return { agents: {} };
   }
@@ -86,20 +89,20 @@ function loadCredentialsFile(): CredentialsFile {
 /**
  * Save the credentials file
  */
-function saveCredentialsFile(data: CredentialsFile): void {
-  ensureOblivionDir();
+async function saveCredentialsFile(data: CredentialsFile): Promise<void> {
+  await ensureOblivionDir();
   const credPath = getCredentialsPath();
   const json = JSON.stringify(data, null, 2);
-  fs.writeFileSync(credPath, json, { mode: 0o600 }); // rw------- (owner only)
+  await fs.writeFile(credPath, json, { mode: 0o600 }); // rw------- (owner only)
 }
 
 /**
  * Add or update agent credentials in the profile store
  * No longer sets activeProfile - profiles are now selected via PID locking
  */
-export function saveCredentials(credentials: AgentCredentials): void {
+export async function saveCredentials(credentials: AgentCredentials): Promise<void> {
   try {
-    const data = loadCredentialsFile();
+    const data = await loadCredentialsFile();
     const profileName = credentials.clientId; // Use clientId as profile name
 
     // Add/update the agent profile
@@ -108,7 +111,7 @@ export function saveCredentials(credentials: AgentCredentials): void {
     // Don't set activeProfile anymore - PID locking handles selection
     // Keep old activeProfile if it exists (for backward compatibility)
 
-    saveCredentialsFile(data);
+    await saveCredentialsFile(data);
 
     console.error(`✅ Credentials saved to ~/.oblivion/credentials.json`);
     console.error(`   Profile: ${profileName} (${credentials.agentName || 'Agent'})`);
@@ -122,9 +125,9 @@ export function saveCredentials(credentials: AgentCredentials): void {
 /**
  * Load credentials for a specific profile
  */
-export function loadCredentials(profileName?: string): AgentCredentials | null {
+export async function loadCredentials(profileName?: string): Promise<AgentCredentials | null> {
   try {
-    const data = loadCredentialsFile();
+    const data = await loadCredentialsFile();
 
     // Determine which profile to use
     const profile = profileName || process.env.OBLIVION_PROFILE || data.activeProfile;
@@ -161,23 +164,25 @@ export function loadCredentials(profileName?: string): AgentCredentials | null {
 /**
  * Clear a specific profile or all credentials
  */
-export function clearCredentials(profileName?: string): boolean {
+export async function clearCredentials(profileName?: string): Promise<boolean> {
   try {
     const credPath = getCredentialsPath();
 
-    if (!fs.existsSync(credPath)) {
+    try {
+      await fs.access(credPath);
+    } catch {
       return false;
     }
 
     if (!profileName) {
       // Clear entire file
-      fs.unlinkSync(credPath);
+      await fs.unlink(credPath);
       console.error(`✅ All credentials cleared from ${credPath}`);
       return true;
     }
 
     // Clear specific profile
-    const data = loadCredentialsFile();
+    const data = await loadCredentialsFile();
     if (data.agents[profileName]) {
       delete data.agents[profileName];
 
@@ -186,7 +191,7 @@ export function clearCredentials(profileName?: string): boolean {
         delete data.activeProfile;
       }
 
-      saveCredentialsFile(data);
+      await saveCredentialsFile(data);
       console.error(`✅ Profile '${profileName}' cleared`);
       return true;
     }
@@ -208,13 +213,13 @@ export function clearCredentials(profileName?: string): boolean {
  * 4. Auto-assign first available unlocked profile
  * 5. Bootstrap mode (no credentials)
  */
-export function getEffectiveCredentials(): {
+export async function getEffectiveCredentials(): Promise<{
   nexusUrl?: string;
   clientId?: string;
   clientSecret?: string;
   selectedProfile?: string;
   selectionMethod?: string;
-} {
+}> {
   // 1. Env vars take absolute priority
   if (process.env.NEXUS_URL && process.env.NEXUS_CLIENT_ID && process.env.NEXUS_CLIENT_SECRET) {
     return {
@@ -233,7 +238,7 @@ export function getEffectiveCredentials(): {
 
   // 2. Explicit OBLIVION_PROFILE env var
   if (process.env.OBLIVION_PROFILE) {
-    const saved = loadCredentials(process.env.OBLIVION_PROFILE);
+    const saved = await loadCredentials(process.env.OBLIVION_PROFILE);
     if (saved) {
       return {
         nexusUrl: saved.nexusUrl,
@@ -246,12 +251,12 @@ export function getEffectiveCredentials(): {
   }
 
   // Clean stale locks before checking
-  cleanStaleLocks();
+  await cleanStaleLocks();
 
   // 3. Check if this PID already has a locked profile
-  const existingLock = getProfileForPid(process.pid);
+  const existingLock = await getProfileForPid(process.pid);
   if (existingLock) {
-    const saved = loadCredentials(existingLock);
+    const saved = await loadCredentials(existingLock);
     if (saved) {
       return {
         nexusUrl: saved.nexusUrl,
@@ -264,14 +269,14 @@ export function getEffectiveCredentials(): {
   }
 
   // 4. Try to auto-assign an available profile
-  const allProfiles = listProfiles();
+  const allProfiles = await listProfiles();
   if (allProfiles.length > 0) {
-    const available = getAvailableProfiles(allProfiles);
+    const available = await getAvailableProfiles(allProfiles);
 
     if (available.length > 0) {
-      const profile = acquireProfileLock(process.pid, allProfiles);
+      const profile = await acquireProfileLock(process.pid, allProfiles);
       if (profile) {
-        const saved = loadCredentials(profile);
+        const saved = await loadCredentials(profile);
         if (saved) {
           return {
             nexusUrl: saved.nexusUrl,
@@ -301,7 +306,7 @@ export function getEffectiveCredentials(): {
 /**
  * List all saved agent profiles
  */
-export function listProfiles(): string[] {
-  const data = loadCredentialsFile();
+export async function listProfiles(): Promise<string[]> {
+  const data = await loadCredentialsFile();
   return Object.keys(data.agents);
 }

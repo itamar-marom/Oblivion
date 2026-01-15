@@ -5,6 +5,17 @@
  * Handles JWT authentication with automatic token refresh.
  */
 
+import {
+  NexusError,
+  ErrorCode,
+  httpStatusToErrorCode,
+  isRetryableErrorCode,
+  createErrorFromException,
+} from './errors.js';
+
+// Re-export error types for consumers
+export { NexusError, ErrorCode } from './errors.js';
+
 export interface NexusConfig {
   baseUrl: string;
   clientId: string;
@@ -193,12 +204,75 @@ export interface RegistrationStatusResult {
   rejectionReason?: string;
 }
 
+// =========================================================================
+// Retry Configuration
+// =========================================================================
+
+export interface RetryConfig {
+  maxRetries: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+  retryableStatuses: number[];
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxRetries: 3,
+  baseDelayMs: 1000,
+  maxDelayMs: 10000,
+  retryableStatuses: [408, 429, 500, 502, 503, 504],
+};
+
+const DEFAULT_TIMEOUT_MS = 30000;
+
+/**
+ * Sleep with exponential backoff and jitter
+ */
+function sleepWithBackoff(attempt: number, config: RetryConfig): Promise<void> {
+  const delay = Math.min(
+    config.baseDelayMs * Math.pow(2, attempt) + Math.random() * 1000,
+    config.maxDelayMs
+  );
+  return new Promise(resolve => setTimeout(resolve, delay));
+}
+
+/**
+ * Check if an error is retryable
+ */
+function isRetryableError(error: unknown, config: RetryConfig): boolean {
+  if (error instanceof Error) {
+    // Network errors are retryable
+    if (error.name === 'AbortError' || error.message.includes('fetch failed')) {
+      return true;
+    }
+    // Check for HTTP status codes
+    const statusMatch = error.message.match(/(\d{3})/);
+    if (statusMatch) {
+      const status = parseInt(statusMatch[1], 10);
+      return config.retryableStatuses.includes(status);
+    }
+  }
+  return false;
+}
+
+export interface NexusClientOptions {
+  retryConfig?: Partial<RetryConfig>;
+  timeoutMs?: number;
+  keepAlive?: boolean; // Enable HTTP keep-alive for connection reuse (default: true)
+}
+
 export class NexusClient {
   private config: NexusConfig;
   private token: AuthToken | null = null;
+  private refreshPromise: Promise<AuthToken> | null = null; // Prevents concurrent auth requests
+  private retryConfig: RetryConfig;
+  private timeoutMs: number;
+  private keepAlive: boolean;
 
-  constructor(config: NexusConfig) {
+  constructor(config: NexusConfig, options?: NexusClientOptions) {
     this.config = config;
+    this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...options?.retryConfig };
+    this.timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.keepAlive = options?.keepAlive ?? true; // Enable keep-alive by default
   }
 
   /**
@@ -214,11 +288,23 @@ export class NexusClient {
         client_id: this.config.clientId,
         client_secret: this.config.clientSecret,
       }),
+      signal: AbortSignal.timeout(this.timeoutMs),
+      keepalive: this.keepAlive,
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Authentication failed: ${response.status} ${error}`);
+      const errorText = await response.text();
+      const code = response.status === 401
+        ? ErrorCode.AUTH_INVALID_CREDENTIALS
+        : httpStatusToErrorCode(response.status);
+
+      throw new NexusError({
+        code,
+        message: `Authentication failed: ${errorText || response.statusText}`,
+        httpStatus: response.status,
+        retryable: isRetryableErrorCode(code),
+        context: { clientId: this.config.clientId },
+      });
     }
 
     const data = await response.json() as {
@@ -236,40 +322,113 @@ export class NexusClient {
   }
 
   /**
-   * Get a valid token, refreshing if needed
+   * Get a valid token, refreshing if needed.
+   * Uses refreshPromise pattern to prevent concurrent auth requests (race condition fix).
    */
   private async getToken(): Promise<string> {
-    if (!this.token || Date.now() >= this.token.expiresAt) {
-      this.token = await this.authenticate();
+    // If token is still valid, return it immediately
+    if (this.token && Date.now() < this.token.expiresAt) {
+      return this.token.accessToken;
     }
-    return this.token.accessToken;
+
+    // If another call is already refreshing, wait for it
+    if (this.refreshPromise) {
+      const token = await this.refreshPromise;
+      return token.accessToken;
+    }
+
+    // Start the refresh and store the promise
+    this.refreshPromise = this.authenticate();
+
+    try {
+      this.token = await this.refreshPromise;
+      return this.token.accessToken;
+    } finally {
+      // Clear the promise so future calls can refresh again
+      this.refreshPromise = null;
+    }
   }
 
   /**
-   * Make an authenticated request to Nexus
+   * Make an authenticated request to Nexus with retry logic
+   *
+   * @param method - HTTP method
+   * @param path - API path
+   * @param body - Request body (optional)
+   * @param options - Request options
+   * @param options.isIdempotent - Whether the operation is safe to retry (default: true for GET/PUT/PATCH/DELETE, false for POST)
    */
   private async request<T>(
     method: string,
     path: string,
-    body?: unknown
+    body?: unknown,
+    options?: { isIdempotent?: boolean }
   ): Promise<T> {
-    const token = await this.getToken();
+    // POST requests are non-idempotent by default (could cause duplicates)
+    // GET, PUT, PATCH, DELETE are idempotent by default
+    const isIdempotent = options?.isIdempotent ?? (method !== 'POST');
+    const maxRetries = isIdempotent ? this.retryConfig.maxRetries : 0;
 
-    const response = await fetch(`${this.config.baseUrl}${path}`, {
-      method,
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    let lastError: NexusError | null = null;
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Nexus API error: ${response.status} ${error}`);
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const token = await this.getToken();
+
+        const response = await fetch(`${this.config.baseUrl}${path}`, {
+          method,
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: body ? JSON.stringify(body) : undefined,
+          signal: AbortSignal.timeout(this.timeoutMs),
+          keepalive: this.keepAlive,
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          const code = httpStatusToErrorCode(response.status);
+          const err = new NexusError({
+            code,
+            message: errorText || response.statusText || `HTTP ${response.status}`,
+            httpStatus: response.status,
+            retryable: isRetryableErrorCode(code),
+            context: { method, path },
+          });
+
+          // Check if we should retry (respects idempotency setting)
+          if (attempt < maxRetries &&
+              this.retryConfig.retryableStatuses.includes(response.status)) {
+            lastError = err;
+            await sleepWithBackoff(attempt, this.retryConfig);
+            continue;
+          }
+
+          throw err;
+        }
+
+        return response.json() as Promise<T>;
+      } catch (error) {
+        // Convert to NexusError if not already
+        lastError = createErrorFromException(error, ErrorCode.UNKNOWN, { method, path });
+
+        // Check if we should retry (respects idempotency setting)
+        if (attempt < maxRetries && lastError.retryable) {
+          await sleepWithBackoff(attempt, this.retryConfig);
+          continue;
+        }
+
+        throw lastError;
+      }
     }
 
-    return response.json() as Promise<T>;
+    throw lastError ?? new NexusError({
+      code: ErrorCode.UNKNOWN,
+      message: 'Request failed after retries',
+      retryable: false,
+      context: { method, path },
+    });
   }
 
   // =========================================================================
@@ -435,6 +594,8 @@ export class NexusClient {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
+      signal: AbortSignal.timeout(this.timeoutMs),
+      keepalive: this.keepAlive,
     });
 
     if (!response.ok) {
@@ -459,6 +620,8 @@ export class NexusClient {
         client_id: clientId,
         client_secret: clientSecret,
       }),
+      signal: AbortSignal.timeout(this.timeoutMs),
+      keepalive: this.keepAlive,
     });
 
     if (response.ok) {

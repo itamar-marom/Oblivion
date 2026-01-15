@@ -25,18 +25,19 @@ import { getEffectiveCredentials, listProfiles } from './credentials-manager.js'
 import { releaseProfileLock, getAllLocks } from './profile-lock-manager.js';
 
 async function main(): Promise<void> {
-  const bootstrapMode = isBootstrapMode();
-  const creds = getEffectiveCredentials();
-  const profiles = listProfiles();
-  const allLocks = getAllLocks();
+  // Load credentials and profiles (async operations)
+  const creds = await getEffectiveCredentials();
+  const bootstrapMode = isBootstrapMode(creds);
+  const profiles = await listProfiles();
+  const allLocks = await getAllLocks();
 
   // Register cleanup handlers to release profile lock on exit
   const cleanup = () => {
-    try {
-      releaseProfileLock(process.pid);
-    } catch (error) {
+    // Note: Using promise without await in cleanup handler
+    // This is intentional as cleanup handlers need to be synchronous-ish
+    releaseProfileLock(process.pid).catch(() => {
       // Ignore errors during cleanup
-    }
+    });
   };
 
   process.on('exit', cleanup);
@@ -49,8 +50,8 @@ async function main(): Promise<void> {
     process.exit(0);
   });
 
-  // Create the MCP server
-  const server = createServer();
+  // Create the MCP server (async)
+  const server = await createServer();
 
   // Create stdio transport for Claude Code communication
   const transport = new StdioServerTransport();
