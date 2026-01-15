@@ -5,12 +5,46 @@ import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
+// Type interfaces for test assertions
+interface AuthResponse {
+  access_token: string;
+}
+
+interface StatsResponse {
+  connectedAgents: number;
+  totalAgents: number;
+  activeTasks: number;
+  pendingTasks: number;
+  totalGroups: number;
+  totalProjects: number;
+}
+
+interface AgentResponse {
+  id: string;
+  name: string;
+  clientId: string;
+  description?: string;
+  email?: string;
+  avatarUrl?: string;
+  slackUserId?: string;
+  capabilities: string[];
+  isActive: boolean;
+  isConnected: boolean;
+  connectionStatus: string;
+}
+
+interface TaskQueueResponse {
+  todo: unknown[];
+  claimed: unknown[];
+  inProgress: unknown[];
+  done: unknown[];
+}
+
 describe('Observer API (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let accessToken: string;
   let testAgentId: string;
-  let testTenantId: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -33,7 +67,6 @@ describe('Observer API (e2e)', () => {
       throw new Error('Test data not seeded. Run: pnpm db:seed');
     }
 
-    testTenantId = tenant.id;
     testAgentId = agent.id;
 
     // Authenticate to get JWT token
@@ -46,7 +79,8 @@ describe('Observer API (e2e)', () => {
       });
 
     expect(authResponse.status).toBe(200);
-    accessToken = authResponse.body.access_token;
+    const authBody = authResponse.body as AuthResponse;
+    accessToken = authBody.access_token;
   });
 
   afterAll(async () => {
@@ -60,20 +94,19 @@ describe('Observer API (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
-      expect(response.body).toHaveProperty('connectedAgents');
-      expect(response.body).toHaveProperty('totalAgents');
-      expect(response.body).toHaveProperty('activeTasks');
-      expect(response.body).toHaveProperty('pendingTasks');
-      expect(response.body).toHaveProperty('totalGroups');
-      expect(response.body).toHaveProperty('totalProjects');
-      expect(typeof response.body.connectedAgents).toBe('number');
-      expect(typeof response.body.totalAgents).toBe('number');
+      const stats = response.body as StatsResponse;
+      expect(stats).toHaveProperty('connectedAgents');
+      expect(stats).toHaveProperty('totalAgents');
+      expect(stats).toHaveProperty('activeTasks');
+      expect(stats).toHaveProperty('pendingTasks');
+      expect(stats).toHaveProperty('totalGroups');
+      expect(stats).toHaveProperty('totalProjects');
+      expect(typeof stats.connectedAgents).toBe('number');
+      expect(typeof stats.totalAgents).toBe('number');
     });
 
     it('should return 401 without auth token', async () => {
-      await request(app.getHttpServer())
-        .get('/observer/stats')
-        .expect(401);
+      await request(app.getHttpServer()).get('/observer/stats').expect(401);
     });
   });
 
@@ -84,10 +117,11 @@ describe('Observer API (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body.length).toBeGreaterThan(0);
+      const agents = response.body as AgentResponse[];
+      expect(Array.isArray(agents)).toBe(true);
+      expect(agents.length).toBeGreaterThan(0);
 
-      const agent = response.body[0];
+      const agent = agents[0];
       expect(agent).toHaveProperty('id');
       expect(agent).toHaveProperty('name');
       expect(agent).toHaveProperty('clientId');
@@ -138,9 +172,10 @@ describe('Observer API (e2e)', () => {
         .send(updateData)
         .expect(200);
 
-      expect(response.body.name).toBe(updateData.name);
-      expect(response.body.description).toBe(updateData.description);
-      expect(response.body.email).toBe(updateData.email);
+      const agent = response.body as AgentResponse;
+      expect(agent.name).toBe(updateData.name);
+      expect(agent.description).toBe(updateData.description);
+      expect(agent.email).toBe(updateData.email);
     });
 
     it('should update agent capabilities', async () => {
@@ -154,7 +189,8 @@ describe('Observer API (e2e)', () => {
         .send(updateData)
         .expect(200);
 
-      expect(response.body.capabilities).toEqual(updateData.capabilities);
+      const agent = response.body as AgentResponse;
+      expect(agent.capabilities).toEqual(updateData.capabilities);
     });
 
     it('should reject invalid email', async () => {
@@ -194,8 +230,9 @@ describe('Observer API (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body.length).toBeLessThanOrEqual(5);
+      const activity = response.body as unknown[];
+      expect(Array.isArray(activity)).toBe(true);
+      expect(activity.length).toBeLessThanOrEqual(5);
     });
   });
 
@@ -206,14 +243,15 @@ describe('Observer API (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
-      expect(response.body).toHaveProperty('todo');
-      expect(response.body).toHaveProperty('claimed');
-      expect(response.body).toHaveProperty('inProgress');
-      expect(response.body).toHaveProperty('done');
-      expect(Array.isArray(response.body.todo)).toBe(true);
-      expect(Array.isArray(response.body.claimed)).toBe(true);
-      expect(Array.isArray(response.body.inProgress)).toBe(true);
-      expect(Array.isArray(response.body.done)).toBe(true);
+      const tasks = response.body as TaskQueueResponse;
+      expect(tasks).toHaveProperty('todo');
+      expect(tasks).toHaveProperty('claimed');
+      expect(tasks).toHaveProperty('inProgress');
+      expect(tasks).toHaveProperty('done');
+      expect(Array.isArray(tasks.todo)).toBe(true);
+      expect(Array.isArray(tasks.claimed)).toBe(true);
+      expect(Array.isArray(tasks.inProgress)).toBe(true);
+      expect(Array.isArray(tasks.done)).toBe(true);
     });
   });
 });

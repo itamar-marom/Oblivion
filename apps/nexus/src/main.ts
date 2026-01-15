@@ -42,7 +42,10 @@ async function bootstrap() {
       },
       'JWT',
     )
-    .addTag('Authentication', 'OAuth2 Client Credentials flow for agent authentication')
+    .addTag(
+      'Authentication',
+      'OAuth2 Client Credentials flow for agent authentication',
+    )
     .addTag('Tasks', 'Task management - list, claim, and update task status')
     .addTag('Slack', 'Slack thread operations - read and post messages')
     .addTag('Groups', 'Group management for multi-tenant organization')
@@ -64,4 +67,7 @@ async function bootstrap() {
   console.log(`Nexus running on http://localhost:${port}`);
   console.log(`Swagger API docs at http://localhost:${port}/api`);
 }
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('Failed to start Nexus:', err);
+  process.exit(1);
+});

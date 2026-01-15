@@ -18,12 +18,9 @@ import type {
   ClickUpWebhookPayload,
   ClickUpWebhookJob,
 } from './dto/clickup-webhook.dto';
-import { SlackEventType, SLACK_JOB_TYPES } from './dto/slack-webhook.dto';
+import { SLACK_JOB_TYPES } from './dto/slack-webhook.dto';
 import type {
   SlackWebhookPayload,
-  SlackEventPayload,
-  SlackUrlVerification,
-  SlackMessageEvent,
   SlackWebhookJob,
 } from './dto/slack-webhook.dto';
 import { WebhookSecurityService } from './services/webhook-security.service';
@@ -133,22 +130,37 @@ export class WebhooksController {
     // Handle URL verification challenge (one-time setup)
     // Note: Skip signature verification for URL verification as Slack may not
     // sign these requests consistently during initial setup
-    if (payload.type === SlackEventType.URL_VERIFICATION) {
-      const verification = payload as SlackUrlVerification;
+    if (payload.type === 'url_verification') {
       this.logger.log('Slack URL verification challenge received');
-      return { challenge: verification.challenge };
+      return { challenge: (payload as { challenge: string }).challenge };
     }
 
     // Get raw body for signature verification
     const rawBody = req.rawBody?.toString() || JSON.stringify(payload);
 
     // Verify Slack signature
-    if (!this.securityService.verifySlackSignature(rawBody, signature, timestamp)) {
+    if (
+      !this.securityService.verifySlackSignature(rawBody, signature, timestamp)
+    ) {
       throw new BadRequestException('Invalid webhook signature');
     }
 
-    // Cast to event payload
-    const eventPayload = payload as SlackEventPayload;
+    // Cast to event payload (after URL verification check, we know it's SlackEventPayload)
+    const eventPayload = payload as {
+      type: string;
+      team_id: string;
+      event_id: string;
+      event: {
+        type: string;
+        channel?: string | { id: string };
+        thread_ts?: string;
+        ts?: string;
+        user?: string;
+        text?: string;
+        bot_id?: string;
+        subtype?: string;
+      };
+    };
     const event = eventPayload.event;
 
     this.logger.log(
@@ -157,8 +169,7 @@ export class WebhooksController {
 
     // Skip bot messages to avoid infinite loops
     if (event.type === 'message') {
-      const msgEvent = event as SlackMessageEvent;
-      if (msgEvent.bot_id || msgEvent.subtype === 'bot_message') {
+      if (event.bot_id || event.subtype === 'bot_message') {
         this.logger.debug('Ignoring bot message');
         return { status: 'ignored' };
       }
@@ -167,13 +178,13 @@ export class WebhooksController {
     // Determine job type based on event
     let jobType: string;
     switch (event.type) {
-      case SlackEventType.MESSAGE:
+      case 'message':
         jobType = SLACK_JOB_TYPES.MESSAGE;
         break;
-      case SlackEventType.APP_MENTION:
+      case 'app_mention':
         jobType = SLACK_JOB_TYPES.APP_MENTION;
         break;
-      case SlackEventType.CHANNEL_CREATED:
+      case 'channel_created':
         jobType = SLACK_JOB_TYPES.CHANNEL_CREATED;
         break;
       default:
@@ -183,26 +194,23 @@ export class WebhooksController {
 
     // Extract channel ID (handle both string and object forms)
     let channelId = '';
-    if ('channel' in event) {
+    if (event.channel) {
       channelId =
-        typeof event.channel === 'string'
-          ? event.channel
-          : event.channel.id;
+        typeof event.channel === 'string' ? event.channel : event.channel.id;
     }
 
     // Create job data for message events
-    const msgEvent = event as SlackMessageEvent;
     const jobData: SlackWebhookJob = {
       eventType: event.type,
       teamId: eventPayload.team_id,
       channelId,
-      threadTs: 'thread_ts' in event ? event.thread_ts : undefined,
-      messageTs: 'ts' in event ? event.ts : eventPayload.event_id,
-      userId: 'user' in event ? event.user : undefined,
-      text: 'text' in event ? event.text : undefined,
-      isBotMessage: !!(msgEvent.bot_id || msgEvent.subtype === 'bot_message'),
+      threadTs: event.thread_ts,
+      messageTs: event.ts || eventPayload.event_id,
+      userId: event.user,
+      text: event.text,
+      isBotMessage: !!(event.bot_id || event.subtype === 'bot_message'),
       receivedAt,
-      raw: eventPayload,
+      raw: eventPayload as unknown as import('./dto/slack-webhook.dto').SlackEventPayload,
     };
 
     // Enqueue for async processing

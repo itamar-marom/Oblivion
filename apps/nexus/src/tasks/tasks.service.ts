@@ -149,7 +149,9 @@ export class TasksService implements OnModuleInit {
                 members: {
                   where: { agent: { isActive: true } },
                   include: {
-                    agent: { select: { id: true, name: true, capabilities: true } },
+                    agent: {
+                      select: { id: true, name: true, capabilities: true },
+                    },
                   },
                 },
               },
@@ -253,7 +255,7 @@ export class TasksService implements OnModuleInit {
     if (task.slackChannelId && task.slackThreadTs) {
       const agentName = agent?.name ?? 'An agent';
       const agentEmoji = agent?.capabilities
-        ? this.slackService.getAgentEmoji(agent.capabilities as string[])
+        ? this.slackService.getAgentEmoji(agent.capabilities)
         : ':robot_face:';
 
       await this.slackService.postThreadReply(
@@ -463,7 +465,9 @@ export class TasksService implements OnModuleInit {
     let task = await this.prisma.task.findUnique({
       where: { id: taskId },
       include: {
-        claimedByAgent: { select: { id: true, name: true, capabilities: true } },
+        claimedByAgent: {
+          select: { id: true, name: true, capabilities: true },
+        },
         project: {
           select: {
             slackChannelId: true,
@@ -473,7 +477,7 @@ export class TasksService implements OnModuleInit {
                 id: true,
                 name: true,
                 members: {
-                  where: { agentId },  // Filter to requesting agent only
+                  where: { agentId }, // Filter to requesting agent only
                   select: { agentId: true },
                 },
               },
@@ -487,7 +491,9 @@ export class TasksService implements OnModuleInit {
       task = await this.prisma.task.findUnique({
         where: { clickupTaskId: taskId },
         include: {
-          claimedByAgent: { select: { id: true, name: true, capabilities: true } },
+          claimedByAgent: {
+            select: { id: true, name: true, capabilities: true },
+          },
           project: {
             select: {
               slackChannelId: true,
@@ -497,7 +503,7 @@ export class TasksService implements OnModuleInit {
                   id: true,
                   name: true,
                   members: {
-                    where: { agentId },  // Filter to requesting agent only
+                    where: { agentId }, // Filter to requesting agent only
                     select: { agentId: true },
                   },
                 },
@@ -525,7 +531,9 @@ export class TasksService implements OnModuleInit {
     const channelId = task.slackChannelId || task.project?.slackChannelId;
 
     if (!channelId) {
-      throw new NotFoundException('No Slack channel configured for this task or project');
+      throw new NotFoundException(
+        'No Slack channel configured for this task or project',
+      );
     }
 
     let threadTs = task.slackThreadTs;
@@ -535,7 +543,10 @@ export class TasksService implements OnModuleInit {
       this.logger.log(`Creating new Slack thread for task ${taskId}`);
 
       const rootMessage = `📋 *Task:* ${task.title || `Task ${task.clickupTaskId}`}\n🤖 Agent *${task.claimedByAgent?.name}* is working on this task.`;
-      const rootResult = await this.slackService.postMessage(channelId, rootMessage);
+      const rootResult = await this.slackService.postMessage(
+        channelId,
+        rootMessage,
+      );
 
       if (!rootResult) {
         throw new Error('Failed to create Slack thread');
@@ -563,7 +574,7 @@ export class TasksService implements OnModuleInit {
 
     // Post to Slack thread as the posting agent (with their username and icon)
     const agentEmoji = postingAgent?.capabilities
-      ? this.slackService.getAgentEmoji(postingAgent.capabilities as string[])
+      ? this.slackService.getAgentEmoji(postingAgent.capabilities)
       : ':robot_face:';
 
     const result = await this.slackService.postThreadReply(
@@ -581,7 +592,9 @@ export class TasksService implements OnModuleInit {
       throw new Error('Failed to post to Slack');
     }
 
-    this.logger.log(`Agent ${agentId} posted to Slack thread for task ${taskId}`);
+    this.logger.log(
+      `Agent ${agentId} posted to Slack thread for task ${taskId}`,
+    );
 
     return {
       ok: true,
@@ -677,9 +690,7 @@ export class TasksService implements OnModuleInit {
 
     // Check if task has a Slack thread
     if (!task.slackThreadTs || !task.slackChannelId) {
-      throw new NotFoundException(
-        'This task does not have a Slack thread yet',
-      );
+      throw new NotFoundException('This task does not have a Slack thread yet');
     }
 
     // Read messages from Slack
@@ -781,15 +792,37 @@ export class TasksService implements OnModuleInit {
 
     // Map ClickUp status to internal status
     const statusUpper = clickupStatus.toUpperCase();
-    let newStatus: 'TODO' | 'CLAIMED' | 'IN_PROGRESS' | 'BLOCKED_ON_HUMAN' | 'DONE' = task.status as any;
+    type TaskStatusType =
+      | 'TODO'
+      | 'CLAIMED'
+      | 'IN_PROGRESS'
+      | 'BLOCKED_ON_HUMAN'
+      | 'DONE';
+    let newStatus: TaskStatusType = task.status as TaskStatusType;
 
-    if (statusUpper.includes('DONE') || statusUpper.includes('COMPLETE') || statusUpper.includes('CLOSED')) {
+    if (
+      statusUpper.includes('DONE') ||
+      statusUpper.includes('COMPLETE') ||
+      statusUpper.includes('CLOSED')
+    ) {
       newStatus = 'DONE';
-    } else if (statusUpper.includes('PROGRESS') || statusUpper.includes('REVIEW') || statusUpper.includes('WORKING')) {
+    } else if (
+      statusUpper.includes('PROGRESS') ||
+      statusUpper.includes('REVIEW') ||
+      statusUpper.includes('WORKING')
+    ) {
       newStatus = 'IN_PROGRESS';
-    } else if (statusUpper.includes('BLOCK') || statusUpper.includes('WAITING') || statusUpper.includes('HOLD')) {
+    } else if (
+      statusUpper.includes('BLOCK') ||
+      statusUpper.includes('WAITING') ||
+      statusUpper.includes('HOLD')
+    ) {
       newStatus = 'BLOCKED_ON_HUMAN';
-    } else if (statusUpper.includes('TODO') || statusUpper.includes('OPEN') || statusUpper.includes('NEW')) {
+    } else if (
+      statusUpper.includes('TODO') ||
+      statusUpper.includes('OPEN') ||
+      statusUpper.includes('NEW')
+    ) {
       // Only reset to TODO if not already claimed
       if (task.status === 'TODO') {
         newStatus = 'TODO';
@@ -805,7 +838,9 @@ export class TasksService implements OnModuleInit {
         data: { status: newStatus },
       });
 
-      this.logger.log(`Task ${task.id} status synced: ${previousStatus} → ${newStatus}`);
+      this.logger.log(
+        `Task ${task.id} status synced: ${previousStatus} → ${newStatus}`,
+      );
     }
 
     return {

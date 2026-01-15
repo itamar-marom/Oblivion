@@ -24,6 +24,7 @@ import {
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto, UpdateProjectDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { getAuthUser } from '../auth/types/authenticated-request';
 
 /**
  * Projects Controller - REST API for managing Work Scopes (Projects).
@@ -46,7 +47,8 @@ export class ProjectsController {
   @ApiBody({ type: CreateProjectDto })
   @ApiResponse({ status: 201, description: 'Project created' })
   async create(@Request() req, @Body() dto: CreateProjectDto) {
-    return this.projectsService.create(req.user.tenantId, dto);
+    const user = getAuthUser(req);
+    return this.projectsService.create(user.tenantId, dto);
   }
 
   @Get()
@@ -54,7 +56,11 @@ export class ProjectsController {
     summary: 'List projects',
     description: 'Get all projects. Optionally filter by group.',
   })
-  @ApiQuery({ name: 'groupId', required: false, description: 'Filter by group ID' })
+  @ApiQuery({
+    name: 'groupId',
+    required: false,
+    description: 'Filter by group ID',
+  })
   @ApiQuery({
     name: 'includeInactive',
     required: false,
@@ -66,8 +72,9 @@ export class ProjectsController {
     @Query('groupId') groupId?: string,
     @Query('includeInactive') includeInactive?: string,
   ) {
+    const user = getAuthUser(req);
     return this.projectsService.findAll(
-      req.user.tenantId,
+      user.tenantId,
       groupId,
       includeInactive === 'true',
     );
@@ -81,7 +88,8 @@ export class ProjectsController {
   @ApiParam({ name: 'id', description: 'Project ID (UUID)' })
   @ApiResponse({ status: 200, description: 'Project details' })
   async findOne(@Request() req, @Param('id') id: string) {
-    return this.projectsService.findOne(req.user.tenantId, id);
+    const user = getAuthUser(req);
+    return this.projectsService.findOne(user.tenantId, id);
   }
 
   @Get(':id/stats')
@@ -92,7 +100,8 @@ export class ProjectsController {
   @ApiParam({ name: 'id', description: 'Project ID (UUID)' })
   @ApiResponse({ status: 200, description: 'Task statistics' })
   async getTaskStats(@Request() req, @Param('id') id: string) {
-    return this.projectsService.getTaskStats(req.user.tenantId, id);
+    const user = getAuthUser(req);
+    return this.projectsService.getTaskStats(user.tenantId, id);
   }
 
   @Patch(':id')
@@ -108,7 +117,8 @@ export class ProjectsController {
     @Param('id') id: string,
     @Body() dto: UpdateProjectDto,
   ) {
-    return this.projectsService.update(req.user.tenantId, id, dto);
+    const user = getAuthUser(req);
+    return this.projectsService.update(user.tenantId, id, dto);
   }
 
   @Delete(':id')
@@ -119,6 +129,7 @@ export class ProjectsController {
   @ApiParam({ name: 'id', description: 'Project ID (UUID)' })
   @ApiResponse({ status: 200, description: 'Project archived' })
   async archive(@Request() req, @Param('id') id: string) {
-    return this.projectsService.archive(req.user.tenantId, id);
+    const user = getAuthUser(req);
+    return this.projectsService.archive(user.tenantId, id);
   }
 }

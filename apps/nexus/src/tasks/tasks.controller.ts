@@ -20,8 +20,13 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { TasksService } from './tasks.service';
-import { UpdateTaskStatusDto, PostSlackReplyDto, GetSlackThreadDto } from './dto';
+import {
+  UpdateTaskStatusDto,
+  PostSlackReplyDto,
+  GetSlackThreadDto,
+} from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { getAuthUser } from '../auth/types/authenticated-request';
 
 /**
  * Tasks Controller - REST API for task operations.
@@ -45,7 +50,8 @@ export class TasksController {
     description: 'List of available tasks',
   })
   async getAvailableTasks(@Request() req) {
-    return this.tasksService.getAvailableTasks(req.user.id);
+    const user = getAuthUser(req);
+    return this.tasksService.getAvailableTasks(user.id);
   }
 
   @Get('claimed')
@@ -58,7 +64,8 @@ export class TasksController {
     description: 'List of claimed tasks',
   })
   async getClaimedTasks(@Request() req) {
-    return this.tasksService.getClaimedTasks(req.user.id);
+    const user = getAuthUser(req);
+    return this.tasksService.getClaimedTasks(user.id);
   }
 
   @Post(':id/claim')
@@ -67,7 +74,7 @@ export class TasksController {
     summary: 'Claim a task',
     description:
       'Claim an available task. The task must be unclaimed and the agent ' +
-      'must belong to the task\'s group. Also available via WebSocket.',
+      "must belong to the task's group. Also available via WebSocket.",
   })
   @ApiParam({ name: 'id', description: 'Task ID (internal UUID)' })
   @ApiResponse({
@@ -83,7 +90,8 @@ export class TasksController {
     description: 'Task already claimed',
   })
   async claimTask(@Request() req, @Param('id') taskId: string) {
-    return this.tasksService.claimTask(req.user.id, taskId);
+    const user = getAuthUser(req);
+    return this.tasksService.claimTask(user.id, taskId);
   }
 
   @Patch(':id/status')
@@ -108,7 +116,8 @@ export class TasksController {
     @Param('id') taskId: string,
     @Body() dto: UpdateTaskStatusDto,
   ) {
-    return this.tasksService.updateTaskStatus(req.user.id, taskId, dto.status);
+    const user = getAuthUser(req);
+    return this.tasksService.updateTaskStatus(user.id, taskId, dto.status);
   }
 
   @Get(':id')
@@ -144,7 +153,7 @@ export class TasksController {
   @ApiOperation({
     summary: 'Post to Slack thread',
     description:
-      'Post a message to the task\'s Slack thread. ' +
+      "Post a message to the task's Slack thread. " +
       'Only the agent who claimed the task can post.',
   })
   @ApiParam({ name: 'id', description: 'Task ID (internal UUID)' })
@@ -162,8 +171,9 @@ export class TasksController {
     @Param('id') taskId: string,
     @Body() dto: PostSlackReplyDto,
   ) {
+    const user = getAuthUser(req);
     return this.tasksService.postToSlackThread(
-      req.user.id,
+      user.id,
       taskId,
       dto.message,
       dto.broadcast,
@@ -174,8 +184,8 @@ export class TasksController {
   @ApiOperation({
     summary: 'Get Slack thread messages',
     description:
-      'Get messages from the task\'s Slack thread. ' +
-      'Any agent in the task\'s group can read the thread.',
+      "Get messages from the task's Slack thread. " +
+      "Any agent in the task's group can read the thread.",
   })
   @ApiParam({ name: 'id', description: 'Task ID (internal UUID)' })
   @ApiResponse({
@@ -187,8 +197,9 @@ export class TasksController {
     @Param('id') taskId: string,
     @Query() dto: GetSlackThreadDto,
   ) {
+    const user = getAuthUser(req);
     return this.tasksService.getTaskSlackThread(
-      req.user.id,
+      user.id,
       taskId,
       dto.limit || 15,
       dto.cursor,

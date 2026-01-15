@@ -99,7 +99,10 @@ export class SlackService {
     this.botToken = this.configService.get<string>('SLACK_BOT_TOKEN') || '';
 
     this.client = new WebClient(this.botToken, {
-      logLevel: this.configService.get('NODE_ENV') === 'development' ? LogLevel.DEBUG : LogLevel.INFO,
+      logLevel:
+        this.configService.get('NODE_ENV') === 'development'
+          ? LogLevel.DEBUG
+          : LogLevel.INFO,
       retryConfig: {
         retries: 3,
       },
@@ -153,7 +156,9 @@ export class SlackService {
         return null;
       }
 
-      this.logger.log(`Channel created: ${result.channel.name} (${result.channel.id})`);
+      this.logger.log(
+        `Channel created: ${result.channel.name} (${result.channel.id})`,
+      );
 
       return {
         ok: true,
@@ -164,10 +169,14 @@ export class SlackService {
       const slackError = error as { data?: { error?: string } };
       // Handle "name_taken" error - channel already exists
       if (slackError.data?.error === 'name_taken') {
-        this.logger.warn(`Channel "${sanitizedName}" already exists, attempting to find it`);
+        this.logger.warn(
+          `Channel "${sanitizedName}" already exists, attempting to find it`,
+        );
         return this.findChannelByName(sanitizedName);
       }
-      this.logger.error(`Failed to create channel "${sanitizedName}": ${error}`);
+      this.logger.error(
+        `Failed to create channel "${sanitizedName}": ${String(error)}`,
+      );
       return null;
     }
   }
@@ -245,7 +254,9 @@ export class SlackService {
         this.logger.debug(`Channel ${channelId} already archived`);
         return true;
       }
-      this.logger.error(`Failed to archive channel ${channelId}: ${error}`);
+      this.logger.error(
+        `Failed to archive channel ${channelId}: ${String(error)}`,
+      );
       return false;
     }
   }
@@ -281,7 +292,9 @@ export class SlackService {
         this.logger.debug(`Channel ${channelId} is not archived`);
         return true;
       }
-      this.logger.error(`Failed to unarchive channel ${channelId}: ${error}`);
+      this.logger.error(
+        `Failed to unarchive channel ${channelId}: ${String(error)}`,
+      );
       return false;
     }
   }
@@ -295,7 +308,10 @@ export class SlackService {
    * @param userId - Slack user ID
    * @returns true if successful, false otherwise
    */
-  async inviteUserToChannel(channelId: string, userId: string): Promise<boolean> {
+  async inviteUserToChannel(
+    channelId: string,
+    userId: string,
+  ): Promise<boolean> {
     if (!this.isConfigured()) {
       this.logger.warn('Slack bot token not configured');
       return false;
@@ -321,7 +337,9 @@ export class SlackService {
         this.logger.debug(`User ${userId} already in channel ${channelId}`);
         return true;
       }
-      this.logger.error(`Failed to invite user ${userId} to channel ${channelId}: ${error}`);
+      this.logger.error(
+        `Failed to invite user ${userId} to channel ${channelId}: ${String(error)}`,
+      );
       return false;
     }
   }
@@ -333,7 +351,10 @@ export class SlackService {
    * @param userId - Slack user ID
    * @returns true if successful, false otherwise
    */
-  async removeUserFromChannel(channelId: string, userId: string): Promise<boolean> {
+  async removeUserFromChannel(
+    channelId: string,
+    userId: string,
+  ): Promise<boolean> {
     if (!this.isConfigured()) {
       this.logger.warn('Slack bot token not configured');
       return false;
@@ -359,7 +380,9 @@ export class SlackService {
         this.logger.debug(`User ${userId} not in channel ${channelId}`);
         return true;
       }
-      this.logger.error(`Failed to remove user ${userId} from channel ${channelId}: ${error}`);
+      this.logger.error(
+        `Failed to remove user ${userId} from channel ${channelId}: ${String(error)}`,
+      );
       return false;
     }
   }
@@ -385,7 +408,7 @@ export class SlackService {
       }
 
       return result.user.id || null;
-    } catch (error) {
+    } catch {
       this.logger.debug(`User not found for email ${email}`);
       return null;
     }
@@ -439,7 +462,10 @@ export class SlackService {
    * @param task - Task information
    * @returns Message result with thread_ts for future replies
    */
-  async postTaskMessage(channelId: string, task: TaskInfo): Promise<SlackMessageResult | null> {
+  async postTaskMessage(
+    channelId: string,
+    task: TaskInfo,
+  ): Promise<SlackMessageResult | null> {
     if (!this.isConfigured()) {
       this.logger.warn('Slack bot token not configured');
       return null;
@@ -448,20 +474,23 @@ export class SlackService {
     try {
       const blocks = this.buildTaskBlocks(task);
 
-      const result: ChatPostMessageResponse = await this.client.chat.postMessage({
-        channel: channelId,
-        text: `New Task: ${task.title}`, // Fallback for notifications
-        blocks,
-        unfurl_links: false,
-        unfurl_media: false,
-      });
+      const result: ChatPostMessageResponse =
+        await this.client.chat.postMessage({
+          channel: channelId,
+          text: `New Task: ${task.title}`, // Fallback for notifications
+          blocks,
+          unfurl_links: false,
+          unfurl_media: false,
+        });
 
       if (!result.ok || !result.ts) {
         this.logger.error(`Failed to post message: ${result.error}`);
         return null;
       }
 
-      this.logger.log(`Task message posted to ${channelId}, thread_ts: ${result.ts}`);
+      this.logger.log(
+        `Task message posted to ${channelId}, thread_ts: ${result.ts}`,
+      );
 
       return {
         ok: true,
@@ -482,7 +511,10 @@ export class SlackService {
    * @param text - Message text (supports mrkdwn)
    * @returns Message result with messageTs for future thread replies, or null on failure
    */
-  async postMessage(channelId: string, text: string): Promise<SlackMessageResult | null> {
+  async postMessage(
+    channelId: string,
+    text: string,
+  ): Promise<SlackMessageResult | null> {
     if (!this.isConfigured()) {
       this.logger.warn('Slack bot token not configured');
       return null;
@@ -805,7 +837,7 @@ export class SlackService {
         ts: msg.ts!,
         threadTs: msg.thread_ts,
         user: msg.user || msg.bot_id || 'unknown',
-        username: (msg as any).username, // Custom username if set via chat:write.customize
+        username: (msg as { username?: string }).username, // Custom username if set via chat:write.customize
         botId: msg.bot_id,
         text: msg.text || '',
         type: msg.type || 'message',
@@ -837,7 +869,9 @@ export class SlackService {
       }
 
       if (slackError.data?.error === 'ratelimited') {
-        this.logger.warn(`Rate limited reading thread ${channelId}:${threadTs}`);
+        this.logger.warn(
+          `Rate limited reading thread ${channelId}:${threadTs}`,
+        );
         return {
           ok: false,
           messages: [],
@@ -846,7 +880,7 @@ export class SlackService {
         };
       }
 
-      this.logger.error(`Failed to read thread: ${error}`);
+      this.logger.error(`Failed to read thread: ${String(error)}`);
       return {
         ok: false,
         messages: [],

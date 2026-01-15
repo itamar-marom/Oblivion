@@ -3,7 +3,6 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
-  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SlackService } from '../integrations/slack/slack.service';
@@ -56,7 +55,9 @@ export class ProjectsService {
     });
 
     if (existingSlug) {
-      throw new ConflictException(`Project with slug "${dto.slug}" already exists in this group`);
+      throw new ConflictException(
+        `Project with slug "${dto.slug}" already exists in this group`,
+      );
     }
 
     // Check if oblivionTag is unique (globally)
@@ -66,7 +67,9 @@ export class ProjectsService {
       });
 
       if (existingTag) {
-        throw new ConflictException(`Oblivion tag "@${dto.oblivionTag}" is already in use`);
+        throw new ConflictException(
+          `Oblivion tag "@${dto.oblivionTag}" is already in use`,
+        );
       }
     }
 
@@ -77,12 +80,20 @@ export class ProjectsService {
     const slackResult = await this.slackService.createChannel(channelName);
     if (slackResult) {
       slackChannelId = slackResult.channelId;
-      this.logger.log(`Slack channel created for project: ${slackResult.channelName}`);
+      this.logger.log(
+        `Slack channel created for project: ${slackResult.channelName}`,
+      );
 
       // Post welcome message
-      await this.slackService.postWelcomeMessage(slackChannelId, 'project', dto.name);
+      await this.slackService.postWelcomeMessage(
+        slackChannelId,
+        'project',
+        dto.name,
+      );
     } else {
-      this.logger.warn(`Failed to create Slack channel for project "${dto.name}"`);
+      this.logger.warn(
+        `Failed to create Slack channel for project "${dto.name}"`,
+      );
     }
 
     // Create the project
@@ -268,7 +279,9 @@ export class ProjectsService {
       });
 
       if (existingTag) {
-        throw new ConflictException(`Oblivion tag "@${dto.oblivionTag}" is already in use`);
+        throw new ConflictException(
+          `Oblivion tag "@${dto.oblivionTag}" is already in use`,
+        );
       }
     }
 
@@ -319,9 +332,13 @@ export class ProjectsService {
 
     // Archive Slack channel
     if (existing.slackChannelId) {
-      const archived = await this.slackService.archiveChannel(existing.slackChannelId);
+      const archived = await this.slackService.archiveChannel(
+        existing.slackChannelId,
+      );
       if (archived) {
-        this.logger.log(`Slack channel archived for project "${existing.name}"`);
+        this.logger.log(
+          `Slack channel archived for project "${existing.name}"`,
+        );
       }
     }
 
@@ -368,7 +385,21 @@ export class ProjectsService {
   /**
    * Format project response with consistent structure.
    */
-  private formatProjectResponse(project: any) {
+  private formatProjectResponse(project: {
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    oblivionTag: string | null;
+    slackChannelId: string | null;
+    slackChannelName: string | null;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    _count?: { tasks?: number };
+    group?: unknown;
+    tasks?: unknown[];
+  }) {
     return {
       id: project.id,
       name: project.name,

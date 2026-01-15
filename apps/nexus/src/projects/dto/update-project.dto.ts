@@ -28,7 +28,8 @@ export class UpdateProjectDto {
   @MinLength(2)
   @MaxLength(50)
   @Matches(/^[a-z0-9-]+$/, {
-    message: 'Oblivion tag must be lowercase alphanumeric with hyphens only (without @)',
+    message:
+      'Oblivion tag must be lowercase alphanumeric with hyphens only (without @)',
   })
   oblivionTag?: string;
 

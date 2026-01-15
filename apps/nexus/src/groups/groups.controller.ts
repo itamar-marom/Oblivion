@@ -24,6 +24,7 @@ import {
 import { GroupsService } from './groups.service';
 import { CreateGroupDto, UpdateGroupDto, AddMemberDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { getAuthUser } from '../auth/types/authenticated-request';
 
 /**
  * Groups Controller - REST API for managing Agent Teams (Groups).
@@ -45,7 +46,8 @@ export class GroupsController {
   @ApiBody({ type: CreateGroupDto })
   @ApiResponse({ status: 201, description: 'Group created successfully' })
   async create(@Request() req, @Body() dto: CreateGroupDto) {
-    return this.groupsService.create(req.user.tenantId, dto);
+    const user = getAuthUser(req);
+    return this.groupsService.create(user.tenantId, dto);
   }
 
   @Get()
@@ -63,8 +65,9 @@ export class GroupsController {
     @Request() req,
     @Query('includeInactive') includeInactive?: string,
   ) {
+    const user = getAuthUser(req);
     return this.groupsService.findAll(
-      req.user.tenantId,
+      user.tenantId,
       includeInactive === 'true',
     );
   }
@@ -77,7 +80,8 @@ export class GroupsController {
   @ApiParam({ name: 'id', description: 'Group ID (UUID)' })
   @ApiResponse({ status: 200, description: 'Group details' })
   async findOne(@Request() req, @Param('id') id: string) {
-    return this.groupsService.findOne(req.user.tenantId, id);
+    const user = getAuthUser(req);
+    return this.groupsService.findOne(user.tenantId, id);
   }
 
   @Patch(':id')
@@ -93,7 +97,8 @@ export class GroupsController {
     @Param('id') id: string,
     @Body() dto: UpdateGroupDto,
   ) {
-    return this.groupsService.update(req.user.tenantId, id, dto);
+    const user = getAuthUser(req);
+    return this.groupsService.update(user.tenantId, id, dto);
   }
 
   @Delete(':id')
@@ -104,7 +109,8 @@ export class GroupsController {
   @ApiParam({ name: 'id', description: 'Group ID (UUID)' })
   @ApiResponse({ status: 200, description: 'Group archived' })
   async archive(@Request() req, @Param('id') id: string) {
-    return this.groupsService.archive(req.user.tenantId, id);
+    const user = getAuthUser(req);
+    return this.groupsService.archive(user.tenantId, id);
   }
 
   // =========================================================================
@@ -119,7 +125,8 @@ export class GroupsController {
   @ApiParam({ name: 'id', description: 'Group ID (UUID)' })
   @ApiResponse({ status: 200, description: 'List of members' })
   async getMembers(@Request() req, @Param('id') id: string) {
-    return this.groupsService.getMembers(req.user.tenantId, id);
+    const user = getAuthUser(req);
+    return this.groupsService.getMembers(user.tenantId, id);
   }
 
   @Post(':id/members')
@@ -136,13 +143,15 @@ export class GroupsController {
     @Param('id') id: string,
     @Body() dto: AddMemberDto,
   ) {
-    return this.groupsService.addMember(req.user.tenantId, id, dto);
+    const user = getAuthUser(req);
+    return this.groupsService.addMember(user.tenantId, id, dto);
   }
 
   @Delete(':id/members/:agentId')
   @ApiOperation({
     summary: 'Remove member from group',
-    description: 'Remove an agent from the group. Also removes from Slack channel.',
+    description:
+      'Remove an agent from the group. Also removes from Slack channel.',
   })
   @ApiParam({ name: 'id', description: 'Group ID (UUID)' })
   @ApiParam({ name: 'agentId', description: 'Agent ID to remove' })
@@ -152,6 +161,7 @@ export class GroupsController {
     @Param('id') id: string,
     @Param('agentId') agentId: string,
   ) {
-    return this.groupsService.removeMember(req.user.tenantId, id, agentId);
+    const user = getAuthUser(req);
+    return this.groupsService.removeMember(user.tenantId, id, agentId);
   }
 }

@@ -8,19 +8,22 @@ Oblivion uses a **single Slack bot** that posts messages with **custom usernames
 
 Your Slack app needs these OAuth scopes:
 
-### Essential:
+### Essential
+
 - `chat:write` - Post messages
 - `chat:write.customize` - **CRITICAL:** Customize username/icon per message
 - `channels:manage` - Create and archive channels
 - `chat:write.public` - Post to channels bot isn't member of
 
-### Optional (for advanced features):
+### Optional (for advanced features)
+
 - `users:read` - Lookup users
 - `users:read.email` - Lookup users by email
 
 ## How It Works
 
 ### 1. Each Agent Gets Visual Identity
+
 ```javascript
 // Agent with capabilities: ['code', 'infrastructure']
 // Posts appear as:
@@ -30,6 +33,7 @@ Message: "Claimed this task and starting work."
 ```
 
 ### 2. Visual Mapping (Capability → Emoji)
+
 - `code` → 👨‍💻 (`:technologist:`)
 - `infrastructure` → ⚙️ (`:gear:`)
 - `review` → 🔍 (`:mag:`)
@@ -39,6 +43,7 @@ Message: "Claimed this task and starting work."
 - `security` → 🛡️ (`:shield:`)
 
 ### 3. Message Attribution
+
 ```
 Thread in #oblivion-project-auth:
 
@@ -59,17 +64,20 @@ Thread in #oblivion-project-auth:
 ## Implementation Details
 
 ### Agent Posts (via MCP)
+
 - Endpoint: `POST /tasks/:id/slack-reply`
 - Username: Agent's name from database
 - Icon: Generated from agent's capabilities
 - Code: `tasks.service.ts:524-538`
 
 ### ClickUp Sync
+
 - Status updates: Posted as "ClickUp" with 📋 icon
 - Comments: Posted as "ClickUp: {author}" with 📝 icon
 - Code: `webhook.processor.ts:214-224, 286-297`
 
 ### Task Claims
+
 - Posted as agent with their icon
 - Message: "Claimed this task and starting work."
 - Code: `tasks.service.ts:252-269`

@@ -147,7 +147,7 @@ export class AgentGateway
       await this.redisService.registerConnection(connection);
 
       // Join tenant room for broadcast
-      client.join(`tenant:${payload.tenantId}`);
+      await client.join(`tenant:${payload.tenantId}`);
 
       console.log(
         `Agent connected: ${payload.clientId} (socket: ${client.id}, tenant: ${payload.tenantId})`,
@@ -169,7 +169,9 @@ export class AgentGateway
           connectedAt: new Date().toISOString(),
         },
       );
-      this.server.to(`tenant:${payload.tenantId}`).emit(connectedEvent.type, connectedEvent);
+      this.server
+        .to(`tenant:${payload.tenantId}`)
+        .emit(connectedEvent.type, connectedEvent);
     } catch (error) {
       console.error(`Connection error: ${error}`);
       client.disconnect(true);
@@ -209,7 +211,6 @@ export class AgentGateway
   @SubscribeMessage(EventType.HEARTBEAT)
   async handleHeartbeat(
     @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: BaseEvent<HeartbeatPayload>,
   ): Promise<BaseEvent<HeartbeatPayload>> {
     await this.redisService.updateHeartbeat(client.id);
 
@@ -270,8 +271,8 @@ export class AgentGateway
         {
           agentId: client.agentId,
           clientId: client.clientId || '',
-          previousStatus: previousStatus as AgentStatusChangedPayload['previousStatus'],
-          newStatus: newStatus as AgentStatusChangedPayload['newStatus'],
+          previousStatus: previousStatus,
+          newStatus: newStatus,
           taskId: data.payload.taskId,
           changedAt: new Date().toISOString(),
         },
@@ -289,7 +290,7 @@ export class AgentGateway
    * (Will be processed by Tool Gateway in future phases)
    */
   @SubscribeMessage(EventType.TOOL_REQUEST)
-  async handleToolRequest(
+  handleToolRequest(
     @ConnectedSocket() client: AuthenticatedSocket,
     @MessageBody() data: BaseEvent<ToolRequestPayload>,
   ) {
@@ -359,14 +360,17 @@ export class AgentGateway
   /**
    * Emit event to all connected agents in a tenant.
    */
-  async emitToTenant<T>(tenantId: string, event: BaseEvent<T>): Promise<void> {
+  emitToTenant<T>(tenantId: string, event: BaseEvent<T>): void {
     this.server.to(`tenant:${tenantId}`).emit(event.type, event);
   }
 
   /**
    * Emit event to multiple specific agents.
    */
-  async emitToAgents<T>(agentIds: string[], event: BaseEvent<T>): Promise<void> {
+  async emitToAgents<T>(
+    agentIds: string[],
+    event: BaseEvent<T>,
+  ): Promise<void> {
     for (const agentId of agentIds) {
       await this.emitToAgent(agentId, event);
     }

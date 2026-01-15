@@ -99,17 +99,21 @@ export class ClickUpService {
 
     // Request/response logging
     this.client.interceptors.request.use((config) => {
-      this.logger.debug(`ClickUp API: ${config.method?.toUpperCase()} ${config.url}`);
+      this.logger.debug(
+        `ClickUp API: ${config.method?.toUpperCase()} ${config.url}`,
+      );
       return config;
     });
 
     this.client.interceptors.response.use(
       (response) => response,
-      (error) => {
-        this.logger.error(
-          `ClickUp API error: ${error.response?.status} ${error.response?.data?.err || error.message}`,
-        );
-        throw error;
+      (error: {
+        response?: { status?: number; data?: { err?: string } };
+        message?: string;
+      }) => {
+        const message = `ClickUp API error: ${error.response?.status} ${error.response?.data?.err || error.message}`;
+        this.logger.error(message);
+        throw new Error(message);
       },
     );
   }
@@ -153,16 +157,22 @@ export class ClickUpService {
    * @param comment - Comment text (supports markdown)
    * @returns Created comment or null on failure
    */
-  async postComment(taskId: string, comment: string): Promise<ClickUpComment | null> {
+  async postComment(
+    taskId: string,
+    comment: string,
+  ): Promise<ClickUpComment | null> {
     if (!this.isConfigured()) {
       this.logger.warn('ClickUp API token not configured');
       return null;
     }
 
     try {
-      const response = await this.client.post<ClickUpComment>(`/task/${taskId}/comment`, {
-        comment_text: comment,
-      });
+      const response = await this.client.post<ClickUpComment>(
+        `/task/${taskId}/comment`,
+        {
+          comment_text: comment,
+        },
+      );
       this.logger.log(`Comment posted to task ${taskId}`);
       return response.data;
     } catch (error) {
@@ -238,7 +248,10 @@ export class ClickUpService {
    * @param targetMentions - Mentions to look for (e.g., ['AI_Squad', 'AI'])
    * @returns true if any target mention is found
    */
-  hasAIMention(description: string, targetMentions: string[] = ['AI_Squad', 'AI', 'Agent']): boolean {
+  hasAIMention(
+    description: string,
+    targetMentions: string[] = ['AI_Squad', 'AI', 'Agent'],
+  ): boolean {
     const mentions = this.parseMentions(description);
     return mentions.some((m) => targetMentions.includes(m));
   }

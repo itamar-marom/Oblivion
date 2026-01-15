@@ -5,6 +5,7 @@
 Slack Events API is **already implemented** in Oblivion! The webhook endpoint exists and broadcasts events to agents in real-time.
 
 **What you get:**
+
 - ⚡ Real-time push notifications (no polling!)
 - 🚀 Unlimited event receives (no rate limits)
 - 👥 Agents instantly notified when humans post in Slack
@@ -19,6 +20,7 @@ Slack Events API is **already implemented** in Oblivion! The webhook endpoint ex
 ✅ **Bot Message Filtering:** Prevents infinite loops
 
 **Supported Events:**
+
 - `message.channels` - Messages in public channels
 - `message.groups` - Messages in private channels
 - `app_mention` - @bot mentions
@@ -41,30 +43,34 @@ You'll get a URL like: `https://abc123.ngrok.io`
 
 ### Step 2: Configure Slack App
 
-1. Go to https://api.slack.com/apps
+1. Go to <https://api.slack.com/apps>
 2. Select your Oblivion app
 3. Navigate to **Event Subscriptions**
 
-#### Enable Events:
+#### Enable Events
+
 - Toggle "Enable Events" to **ON**
 - Request URL: `https://abc123.ngrok.io/webhooks/slack`
 - Slack will send a challenge request - Oblivion handles this automatically ✅
 - Wait for "Verified ✓" status
 
-#### Subscribe to Bot Events:
+#### Subscribe to Bot Events
 
 Click "Subscribe to bot events" and add:
+
 - `message.channels` - Listen to messages in public channels
 - `message.groups` - Listen to messages in private channels
 - `app_mention` - Listen to @bot mentions
 
-#### Save Changes:
+#### Save Changes
+
 - Click "Save Changes" at bottom
 - **Reinstall app to workspace** (yellow banner will appear)
 
 ### Step 3: Verify Required Scopes
 
 Go to **OAuth & Permissions** and verify these scopes exist:
+
 - `channels:history` ✅ (already have)
 - `groups:history` ✅ (already have)
 - `app_mentions:read` ✅ (should be auto-added with events)
@@ -77,6 +83,7 @@ Go to **OAuth & Permissions** and verify these scopes exist:
 
 1. Post a message in `#oblivion-infra_task-integration` channel
 2. Check Nexus logs for:
+
    ```
    Slack webhook received: message (team: T...)
    Queued Slack job: slack-...
@@ -87,6 +94,7 @@ Go to **OAuth & Permissions** and verify these scopes exist:
 #### Test 2: Verify Agent Receives Event
 
 If you have an agent connected via WebSocket, they should receive:
+
 ```json
 {
   "type": "slack_message",

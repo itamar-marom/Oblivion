@@ -29,7 +29,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private client: Redis;
   private readonly CONNECTION_TTL = 300; // 5 minutes
 
-  async onModuleInit() {
+  onModuleInit() {
     this.client = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
       maxRetriesPerRequest: 3,
       retryStrategy: (times) => Math.min(times * 100, 3000),
@@ -75,7 +75,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const data = await this.client.get(`socket:${socketId}`);
     if (!data) return null;
 
-    const connection: AgentConnection = JSON.parse(data);
+    const connection = JSON.parse(data) as AgentConnection;
 
     // Clean up all mappings
     await this.client.del(`socket:${socketId}`);
@@ -91,9 +91,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   /**
    * Get connection info by socket ID.
    */
-  async getConnectionBySocket(socketId: string): Promise<AgentConnection | null> {
+  async getConnectionBySocket(
+    socketId: string,
+  ): Promise<AgentConnection | null> {
     const data = await this.client.get(`socket:${socketId}`);
-    return data ? JSON.parse(data) : null;
+    return data ? (JSON.parse(data) as AgentConnection) : null;
   }
 
   /**
@@ -106,7 +108,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   /**
    * Get connection info by agent ID.
    */
-  async getConnectionByAgentId(agentId: string): Promise<AgentConnection | null> {
+  async getConnectionByAgentId(
+    agentId: string,
+  ): Promise<AgentConnection | null> {
     const socketId = await this.client.get(`agent:${agentId}`);
     if (!socketId) return null;
     return this.getConnectionBySocket(socketId);
@@ -122,11 +126,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   /**
    * Update last seen time and status (heartbeat).
    */
-  async updateHeartbeat(socketId: string, status?: AgentConnection['status']): Promise<void> {
+  async updateHeartbeat(
+    socketId: string,
+    status?: AgentConnection['status'],
+  ): Promise<void> {
     const data = await this.client.get(`socket:${socketId}`);
     if (!data) return;
 
-    const connection: AgentConnection = JSON.parse(data);
+    const connection = JSON.parse(data) as AgentConnection;
     connection.lastSeen = new Date().toISOString();
     if (status) connection.status = status;
 
@@ -136,7 +143,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       this.CONNECTION_TTL,
       JSON.stringify(connection),
     );
-    await this.client.expire(`agent:${connection.agentId}`, this.CONNECTION_TTL);
+    await this.client.expire(
+      `agent:${connection.agentId}`,
+      this.CONNECTION_TTL,
+    );
   }
 
   /**

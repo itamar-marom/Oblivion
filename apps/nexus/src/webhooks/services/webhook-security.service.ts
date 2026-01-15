@@ -23,14 +23,22 @@ export class WebhookSecurityService {
   private readonly SLACK_TIMESTAMP_TOLERANCE_SECONDS = 300;
 
   constructor(private configService: ConfigService) {
-    this.clickUpSecret = this.configService.get<string>('CLICKUP_WEBHOOK_SECRET');
-    this.slackSigningSecret = this.configService.get<string>('SLACK_SIGNING_SECRET');
+    this.clickUpSecret = this.configService.get<string>(
+      'CLICKUP_WEBHOOK_SECRET',
+    );
+    this.slackSigningSecret = this.configService.get<string>(
+      'SLACK_SIGNING_SECRET',
+    );
 
     if (!this.clickUpSecret) {
-      this.logger.warn('CLICKUP_WEBHOOK_SECRET not configured - signature verification disabled');
+      this.logger.warn(
+        'CLICKUP_WEBHOOK_SECRET not configured - signature verification disabled',
+      );
     }
     if (!this.slackSigningSecret) {
-      this.logger.warn('SLACK_SIGNING_SECRET not configured - signature verification disabled');
+      this.logger.warn(
+        'SLACK_SIGNING_SECRET not configured - signature verification disabled',
+      );
     }
   }
 
@@ -58,10 +66,15 @@ export class WebhookSecurityService {
    * @param signature - The x-signature header value
    * @returns true if signature is valid or verification is disabled
    */
-  verifyClickUpSignature(body: unknown, signature: string | undefined): boolean {
+  verifyClickUpSignature(
+    body: unknown,
+    signature: string | undefined,
+  ): boolean {
     // If no secret configured, skip verification (dev mode)
     if (!this.clickUpSecret) {
-      this.logger.debug('ClickUp signature verification skipped (no secret configured)');
+      this.logger.debug(
+        'ClickUp signature verification skipped (no secret configured)',
+      );
       return true;
     }
 
@@ -118,7 +131,9 @@ export class WebhookSecurityService {
   ): boolean {
     // If no secret configured, skip verification (dev mode)
     if (!this.slackSigningSecret) {
-      this.logger.debug('Slack signature verification skipped (no secret configured)');
+      this.logger.debug(
+        'Slack signature verification skipped (no secret configured)',
+      );
       return true;
     }
 

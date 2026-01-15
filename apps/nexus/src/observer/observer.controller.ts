@@ -12,7 +12,14 @@ import {
 } from '@nestjs/common';
 import { ObserverService } from './observer.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateAgentDto, UpdateAgentDto, CreateRegistrationTokenDto, RejectAgentDto, CreateTaskDto } from './dto';
+import { getAuthUser } from '../auth/types/authenticated-request';
+import {
+  CreateAgentDto,
+  UpdateAgentDto,
+  CreateRegistrationTokenDto,
+  RejectAgentDto,
+  CreateTaskDto,
+} from './dto';
 
 /**
  * Observer Controller.
@@ -45,7 +52,8 @@ export class ObserverController {
    */
   @Get('stats')
   async getStats(@Request() req) {
-    return this.observerService.getStats(req.user.tenantId);
+    const user = getAuthUser(req);
+    return this.observerService.getStats(user.tenantId);
   }
 
   /**
@@ -59,7 +67,8 @@ export class ObserverController {
    */
   @Get('agents')
   async getAgents(@Request() req) {
-    return this.observerService.getAgents(req.user.tenantId);
+    const user = getAuthUser(req);
+    return this.observerService.getAgents(user.tenantId);
   }
 
   /**
@@ -70,7 +79,8 @@ export class ObserverController {
    */
   @Post('agents')
   async createAgent(@Request() req, @Body() dto: CreateAgentDto) {
-    return this.observerService.createAgent(req.user.tenantId, dto);
+    const user = getAuthUser(req);
+    return this.observerService.createAgent(user.tenantId, dto);
   }
 
   // =========================================================================
@@ -85,7 +95,8 @@ export class ObserverController {
    */
   @Get('agents/pending')
   async getPendingAgents(@Request() req) {
-    return this.observerService.getPendingAgents(req.user.tenantId);
+    const user = getAuthUser(req);
+    return this.observerService.getPendingAgents(user.tenantId);
   }
 
   /**
@@ -93,7 +104,8 @@ export class ObserverController {
    */
   @Get('agents/pending/count')
   async getPendingCount(@Request() req) {
-    return this.observerService.getPendingCount(req.user.tenantId);
+    const user = getAuthUser(req);
+    return this.observerService.getPendingCount(user.tenantId);
   }
 
   /**
@@ -106,11 +118,8 @@ export class ObserverController {
    */
   @Post('agents/:id/approve')
   async approveAgent(@Request() req, @Param('id') agentId: string) {
-    return this.observerService.approveAgent(
-      req.user.tenantId,
-      agentId,
-      req.user.id,
-    );
+    const user = getAuthUser(req);
+    return this.observerService.approveAgent(user.tenantId, agentId, user.id);
   }
 
   /**
@@ -124,10 +133,11 @@ export class ObserverController {
     @Param('id') agentId: string,
     @Body() dto: RejectAgentDto,
   ) {
+    const user = getAuthUser(req);
     return this.observerService.rejectAgent(
-      req.user.tenantId,
+      user.tenantId,
       agentId,
-      req.user.id,
+      user.id,
       dto,
     );
   }
@@ -137,7 +147,8 @@ export class ObserverController {
    */
   @Get('agents/:id')
   async getAgent(@Request() req, @Param('id') agentId: string) {
-    return this.observerService.getAgent(req.user.tenantId, agentId);
+    const user = getAuthUser(req);
+    return this.observerService.getAgent(user.tenantId, agentId);
   }
 
   /**
@@ -152,7 +163,8 @@ export class ObserverController {
     @Param('id') agentId: string,
     @Body() dto: UpdateAgentDto,
   ) {
-    return this.observerService.updateAgent(req.user.tenantId, agentId, dto);
+    const user = getAuthUser(req);
+    return this.observerService.updateAgent(user.tenantId, agentId, dto);
   }
 
   /**
@@ -166,12 +178,10 @@ export class ObserverController {
    * - status_change
    */
   @Get('activity')
-  async getActivity(
-    @Request() req,
-    @Query('limit') limit?: string,
-  ) {
+  async getActivity(@Request() req, @Query('limit') limit?: string) {
+    const user = getAuthUser(req);
     const limitNum = limit ? parseInt(limit, 10) : 50;
-    return this.observerService.getActivity(req.user.tenantId, limitNum);
+    return this.observerService.getActivity(user.tenantId, limitNum);
   }
 
   /**
@@ -185,7 +195,8 @@ export class ObserverController {
    */
   @Get('tasks')
   async getTaskQueue(@Request() req) {
-    return this.observerService.getTaskQueue(req.user.tenantId);
+    const user = getAuthUser(req);
+    return this.observerService.getTaskQueue(user.tenantId);
   }
 
   /**
@@ -196,7 +207,8 @@ export class ObserverController {
    */
   @Post('tasks')
   async createTask(@Request() req, @Body() dto: CreateTaskDto) {
-    return this.observerService.createTask(req.user.tenantId, dto);
+    const user = getAuthUser(req);
+    return this.observerService.createTask(user.tenantId, dto);
   }
 
   // =========================================================================
@@ -214,9 +226,10 @@ export class ObserverController {
     @Request() req,
     @Body() dto: CreateRegistrationTokenDto,
   ) {
+    const user = getAuthUser(req);
     return this.observerService.createRegistrationToken(
-      req.user.tenantId,
-      req.user.id, // creator agent ID
+      user.tenantId,
+      user.id, // creator agent ID
       dto,
     );
   }
@@ -231,17 +244,16 @@ export class ObserverController {
     @Request() req,
     @Query('groupId') groupId?: string,
   ) {
-    return this.observerService.listRegistrationTokens(req.user.tenantId, groupId);
+    const user = getAuthUser(req);
+    return this.observerService.listRegistrationTokens(user.tenantId, groupId);
   }
 
   /**
    * Revoke (deactivate) a registration token.
    */
   @Delete('registration-tokens/:id')
-  async revokeRegistrationToken(
-    @Request() req,
-    @Param('id') tokenId: string,
-  ) {
-    return this.observerService.revokeRegistrationToken(req.user.tenantId, tokenId);
+  async revokeRegistrationToken(@Request() req, @Param('id') tokenId: string) {
+    const user = getAuthUser(req);
+    return this.observerService.revokeRegistrationToken(user.tenantId, tokenId);
   }
 }

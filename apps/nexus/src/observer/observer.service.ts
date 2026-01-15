@@ -1,5 +1,16 @@
-import { Injectable, Logger, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
-import { CreateAgentDto, UpdateAgentDto, CreateRegistrationTokenDto, RejectAgentDto } from './dto';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
+import {
+  CreateAgentDto,
+  UpdateAgentDto,
+  CreateRegistrationTokenDto,
+  RejectAgentDto,
+} from './dto';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,7 +22,12 @@ import { SlackService } from '../integrations/slack/slack.service';
  */
 export interface ActivityEvent {
   id: string;
-  type: 'task_created' | 'task_claimed' | 'agent_connected' | 'agent_disconnected' | 'status_change';
+  type:
+    | 'task_created'
+    | 'task_claimed'
+    | 'agent_connected'
+    | 'agent_disconnected'
+    | 'status_change';
   timestamp: string;
   agentId?: string;
   agentName?: string;
@@ -132,7 +148,10 @@ export class ObserverService {
 
     // Connected = WebSocket connected OR recently seen via API
     // Use max to avoid double-counting (some might be in both)
-    const connectedAgents = Math.max(connectedAgentIds.length, recentlySeenCount);
+    const connectedAgents = Math.max(
+      connectedAgentIds.length,
+      recentlySeenCount,
+    );
 
     return {
       connectedAgents,
@@ -156,7 +175,8 @@ export class ObserverService {
     });
 
     // Get connected agent IDs from Redis
-    const connectedAgentIds = await this.redisService.getConnectedAgentsForTenant(tenantId);
+    const connectedAgentIds =
+      await this.redisService.getConnectedAgentsForTenant(tenantId);
     const connectedSet = new Set(connectedAgentIds);
 
     // Get detailed connection info for connected agents
@@ -176,8 +196,10 @@ export class ObserverService {
       const hasWebSocket = connectedSet.has(agent.id);
 
       // Check if agent was seen recently via REST API
-      const recentlySeenViaApi = !!(agent.lastSeenAt &&
-        (Date.now() - agent.lastSeenAt.getTime()) < ONLINE_THRESHOLD_MS);
+      const recentlySeenViaApi = !!(
+        agent.lastSeenAt &&
+        Date.now() - agent.lastSeenAt.getTime() < ONLINE_THRESHOLD_MS
+      );
 
       // Agent is connected if they have WebSocket OR were recently seen via API
       const isConnected = hasWebSocket || recentlySeenViaApi;
@@ -198,7 +220,7 @@ export class ObserverService {
         email: agent.email,
         avatarUrl: agent.avatarUrl,
         slackUserId: agent.slackUserId,
-        capabilities: agent.capabilities as string[],
+        capabilities: agent.capabilities,
         isActive: agent.isActive,
         lastSeenAt: agent.lastSeenAt,
         createdAt: agent.createdAt,
@@ -230,8 +252,10 @@ export class ObserverService {
     }
 
     // Check if agent was seen recently via REST API
-    const recentlySeenViaApi = !!(agent.lastSeenAt &&
-      (Date.now() - agent.lastSeenAt.getTime()) < ONLINE_THRESHOLD_MS);
+    const recentlySeenViaApi = !!(
+      agent.lastSeenAt &&
+      Date.now() - agent.lastSeenAt.getTime() < ONLINE_THRESHOLD_MS
+    );
 
     // Agent is connected if they have WebSocket OR were recently seen via API
     const isConnected = !!conn || recentlySeenViaApi;
@@ -252,7 +276,7 @@ export class ObserverService {
       email: agent.email,
       avatarUrl: agent.avatarUrl,
       slackUserId: agent.slackUserId,
-      capabilities: agent.capabilities as string[],
+      capabilities: agent.capabilities,
       isActive: agent.isActive,
       lastSeenAt: agent.lastSeenAt,
       createdAt: agent.createdAt,
@@ -266,14 +290,19 @@ export class ObserverService {
   /**
    * Create a new agent.
    */
-  async createAgent(tenantId: string, dto: CreateAgentDto): Promise<AgentWithStatus> {
+  async createAgent(
+    tenantId: string,
+    dto: CreateAgentDto,
+  ): Promise<AgentWithStatus> {
     // Check if clientId already exists for this tenant
     const existing = await this.prisma.agent.findFirst({
       where: { tenantId, clientId: dto.clientId },
     });
 
     if (existing) {
-      throw new ConflictException(`Agent with clientId "${dto.clientId}" already exists`);
+      throw new ConflictException(
+        `Agent with clientId "${dto.clientId}" already exists`,
+      );
     }
 
     // Hash the client secret
@@ -292,7 +321,9 @@ export class ObserverService {
       },
     });
 
-    this.logger.log(`Agent "${agent.name}" (${agent.clientId}) created via Observer`);
+    this.logger.log(
+      `Agent "${agent.name}" (${agent.clientId}) created via Observer`,
+    );
 
     return {
       id: agent.id,
@@ -302,7 +333,7 @@ export class ObserverService {
       email: agent.email,
       avatarUrl: agent.avatarUrl,
       slackUserId: agent.slackUserId,
-      capabilities: agent.capabilities as string[],
+      capabilities: agent.capabilities,
       isActive: agent.isActive,
       lastSeenAt: agent.lastSeenAt,
       createdAt: agent.createdAt,
@@ -315,7 +346,11 @@ export class ObserverService {
   /**
    * Update an agent's profile.
    */
-  async updateAgent(tenantId: string, agentId: string, dto: UpdateAgentDto): Promise<AgentWithStatus> {
+  async updateAgent(
+    tenantId: string,
+    agentId: string,
+    dto: UpdateAgentDto,
+  ): Promise<AgentWithStatus> {
     // Verify agent exists and belongs to tenant
     const existing = await this.prisma.agent.findFirst({
       where: { id: agentId, tenantId },
@@ -355,7 +390,7 @@ export class ObserverService {
       email: agent.email,
       avatarUrl: agent.avatarUrl,
       slackUserId: agent.slackUserId,
-      capabilities: agent.capabilities as string[],
+      capabilities: agent.capabilities,
       isActive: agent.isActive,
       lastSeenAt: agent.lastSeenAt,
       createdAt: agent.createdAt,
@@ -422,7 +457,10 @@ export class ObserverService {
 
     // Sort by timestamp descending and limit
     return events
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+      )
       .slice(0, limit);
   }
 
@@ -579,7 +617,9 @@ export class ObserverService {
       },
     });
 
-    this.logger.log(`Registration token created for group "${group.name}" by agent ${creatorId}`);
+    this.logger.log(
+      `Registration token created for group "${group.name}" by agent ${creatorId}`,
+    );
 
     return {
       id: registrationToken.id,
@@ -722,7 +762,9 @@ export class ObserverService {
     }
 
     if (agent.approvalStatus !== 'PENDING') {
-      throw new BadRequestException(`Agent is not pending approval (status: ${agent.approvalStatus})`);
+      throw new BadRequestException(
+        `Agent is not pending approval (status: ${agent.approvalStatus})`,
+      );
     }
 
     // Get the pending group
@@ -760,10 +802,17 @@ export class ObserverService {
     // Invite agent to Slack channel (best effort, outside transaction)
     if (group?.slackChannelId && agent.slackUserId) {
       try {
-        await this.slackService.inviteUserToChannel(group.slackChannelId, agent.slackUserId);
-        this.logger.log(`Invited agent ${agent.name} to Slack channel ${group.slackChannelName}`);
+        await this.slackService.inviteUserToChannel(
+          group.slackChannelId,
+          agent.slackUserId,
+        );
+        this.logger.log(
+          `Invited agent ${agent.name} to Slack channel ${group.slackChannelName}`,
+        );
       } catch (error) {
-        this.logger.warn(`Failed to invite agent to Slack: ${error.message}`);
+        this.logger.warn(
+          `Failed to invite agent to Slack: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
 
@@ -778,7 +827,12 @@ export class ObserverService {
   /**
    * Reject an agent registration.
    */
-  async rejectAgent(tenantId: string, agentId: string, rejecterId: string, dto?: RejectAgentDto) {
+  async rejectAgent(
+    tenantId: string,
+    agentId: string,
+    rejecterId: string,
+    dto?: RejectAgentDto,
+  ) {
     // Find the pending agent
     const agent = await this.prisma.agent.findFirst({
       where: { id: agentId, tenantId },
@@ -789,7 +843,9 @@ export class ObserverService {
     }
 
     if (agent.approvalStatus !== 'PENDING') {
-      throw new BadRequestException(`Agent is not pending approval (status: ${agent.approvalStatus})`);
+      throw new BadRequestException(
+        `Agent is not pending approval (status: ${agent.approvalStatus})`,
+      );
     }
 
     // Update agent

@@ -1,4 +1,10 @@
-import { Injectable, UnauthorizedException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -117,12 +123,14 @@ export class AuthService {
     }
 
     // Update lastSeenAt on every authenticated request (fire and forget)
-    this.prisma.agent.update({
-      where: { id: agent.id },
-      data: { lastSeenAt: new Date() },
-    }).catch(() => {
-      // Ignore errors - this is best-effort tracking
-    });
+    this.prisma.agent
+      .update({
+        where: { id: agent.id },
+        data: { lastSeenAt: new Date() },
+      })
+      .catch(() => {
+        // Ignore errors - this is best-effort tracking
+      });
 
     return {
       id: agent.id,
@@ -194,7 +202,9 @@ export class AuthService {
     }
 
     if (token.maxUses && token.usedCount >= token.maxUses) {
-      throw new BadRequestException('Registration token has reached maximum uses');
+      throw new BadRequestException(
+        'Registration token has reached maximum uses',
+      );
     }
 
     // 2. Get tenant from the token's group
@@ -208,7 +218,9 @@ export class AuthService {
     });
 
     if (existingAgent) {
-      throw new ConflictException(`Agent with clientId "${dto.clientId}" already exists`);
+      throw new ConflictException(
+        `Agent with clientId "${dto.clientId}" already exists`,
+      );
     }
 
     // 4. Hash the client secret

@@ -4,7 +4,10 @@ import { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../../queue/queue.module';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AgentGateway, createEvent, EventType } from '../../gateway';
-import type { ContextUpdatePayload, SlackMessagePayload } from '../../gateway/dto/events.dto';
+import type {
+  ContextUpdatePayload,
+  SlackMessagePayload,
+} from '../../gateway/dto/events.dto';
 import { ClickUpService } from '../../integrations/clickup/clickup.service';
 import { SlackService } from '../../integrations/slack/slack.service';
 import { ProjectsService } from '../../projects/projects.service';
@@ -196,16 +199,25 @@ export class WebhookProcessor extends WorkerHost {
 
     // Log status change details if available
     if (statusChange) {
-      const beforeStatus = (statusChange.before as { status?: string })?.status || 'unknown';
-      const afterStatus = (statusChange.after as { status?: string })?.status || clickupStatus;
-      this.logger.log(`Status change detected: "${beforeStatus}" → "${afterStatus}"`);
+      const beforeStatus =
+        (statusChange.before as { status?: string })?.status || 'unknown';
+      const afterStatus =
+        (statusChange.after as { status?: string })?.status || clickupStatus;
+      this.logger.log(
+        `Status change detected: "${beforeStatus}" → "${afterStatus}"`,
+      );
     }
 
     // Sync status via TasksService
-    const taskResult = await this.tasksService.syncStatusFromClickUp(data.taskId, clickupStatus);
+    const taskResult = await this.tasksService.syncStatusFromClickUp(
+      data.taskId,
+      clickupStatus,
+    );
 
     if (!taskResult) {
-      this.logger.debug(`No task found for ClickUp task ${data.taskId}, ignoring`);
+      this.logger.debug(
+        `No task found for ClickUp task ${data.taskId}, ignoring`,
+      );
       return;
     }
 
@@ -273,7 +285,9 @@ export class WebhookProcessor extends WorkerHost {
     });
 
     if (!task) {
-      this.logger.debug(`No task found for ClickUp task ${data.taskId}, ignoring comment`);
+      this.logger.debug(
+        `No task found for ClickUp task ${data.taskId}, ignoring comment`,
+      );
       return;
     }
 
@@ -285,11 +299,17 @@ export class WebhookProcessor extends WorkerHost {
 
     if (commentItem && commentItem.comment) {
       const author = commentItem.user?.username || 'Unknown';
-      const content = commentItem.comment.text_content || commentItem.comment.comment_text || '';
+      const content =
+        commentItem.comment.text_content ||
+        commentItem.comment.comment_text ||
+        '';
 
       // Post comment to Slack thread as the ClickUp user
       if (task.slackChannelId && task.slackThreadTs) {
-        const formattedComment = this.slackService.formatCommentForSlack(author, content);
+        const formattedComment = this.slackService.formatCommentForSlack(
+          author,
+          content,
+        );
         await this.slackService.postThreadReply(
           task.slackChannelId,
           task.slackThreadTs,
@@ -355,7 +375,9 @@ export class WebhookProcessor extends WorkerHost {
    * If in a tracked thread, sync to ClickUp and emit CONTEXT_UPDATE.
    */
   private async handleSlackMessage(data: SlackWebhookJob): Promise<void> {
-    this.logger.log(`Slack message in channel ${data.channelId}${data.threadTs ? ' (thread)' : ''}`);
+    this.logger.log(
+      `Slack message in channel ${data.channelId}${data.threadTs ? ' (thread)' : ''}`,
+    );
 
     // Try to find a project that owns this channel
     const project = await this.prisma.project.findFirst({
@@ -412,7 +434,11 @@ export class WebhookProcessor extends WorkerHost {
     const agentIds = targetGroup.members.map((m) => m.agent.id);
 
     // If this is a thread message, try to find the associated task
-    let task: { id: string; clickupTaskId: string; title: string | null } | null = null;
+    let task: {
+      id: string;
+      clickupTaskId: string;
+      title: string | null;
+    } | null = null;
     if (data.threadTs) {
       task = await this.prisma.task.findFirst({
         where: {
@@ -438,7 +464,9 @@ export class WebhookProcessor extends WorkerHost {
         );
 
         if (result) {
-          this.logger.log(`Message synced to ClickUp task ${task.clickupTaskId}`);
+          this.logger.log(
+            `Message synced to ClickUp task ${task.clickupTaskId}`,
+          );
         }
       }
     }
@@ -481,7 +509,10 @@ export class WebhookProcessor extends WorkerHost {
         isHuman: true,
       };
 
-      const contextEvent = createEvent(EventType.CONTEXT_UPDATE, contextPayload);
+      const contextEvent = createEvent(
+        EventType.CONTEXT_UPDATE,
+        contextPayload,
+      );
 
       for (const agentId of agentIds) {
         await this.gateway.emitToAgent(agentId, contextEvent);

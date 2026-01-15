@@ -62,7 +62,12 @@ export interface ClickUpTask {
   checklists?: unknown[];
   tags?: { name: string; tag_fg: string; tag_bg: string }[];
   parent?: string;
-  priority?: { id: string; priority: string; color: string; orderindex: string };
+  priority?: {
+    id: string;
+    priority: string;
+    color: string;
+    orderindex: string;
+  };
   due_date?: string;
   start_date?: string;
   folder: { id: string; name: string; hidden: boolean; access: boolean };

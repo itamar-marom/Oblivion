@@ -3,7 +3,6 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
-  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SlackService } from '../integrations/slack/slack.service';
@@ -41,7 +40,9 @@ export class GroupsService {
     });
 
     if (existing) {
-      throw new ConflictException(`Group with slug "${dto.slug}" already exists`);
+      throw new ConflictException(
+        `Group with slug "${dto.slug}" already exists`,
+      );
     }
 
     // Create Slack channel (naming: oblivion-group-{slug})
@@ -51,12 +52,20 @@ export class GroupsService {
     const slackResult = await this.slackService.createChannel(channelName);
     if (slackResult) {
       slackChannelId = slackResult.channelId;
-      this.logger.log(`Slack channel created for group: ${slackResult.channelName}`);
+      this.logger.log(
+        `Slack channel created for group: ${slackResult.channelName}`,
+      );
 
       // Post welcome message
-      await this.slackService.postWelcomeMessage(slackChannelId, 'group', dto.name);
+      await this.slackService.postWelcomeMessage(
+        slackChannelId,
+        'group',
+        dto.name,
+      );
     } else {
-      this.logger.warn(`Failed to create Slack channel for group "${dto.name}"`);
+      this.logger.warn(
+        `Failed to create Slack channel for group "${dto.name}"`,
+      );
     }
 
     // Create the group
@@ -250,7 +259,9 @@ export class GroupsService {
 
     // Archive Slack channel
     if (existing.slackChannelId) {
-      const archived = await this.slackService.archiveChannel(existing.slackChannelId);
+      const archived = await this.slackService.archiveChannel(
+        existing.slackChannelId,
+      );
       if (archived) {
         this.logger.log(`Slack channel archived for group "${existing.name}"`);
       }
@@ -277,7 +288,13 @@ export class GroupsService {
     // Verify agent exists and belongs to same tenant
     const agent = await this.prisma.agent.findFirst({
       where: { id: dto.agentId, tenantId, isActive: true },
-      select: { id: true, name: true, email: true, avatarUrl: true, slackUserId: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        avatarUrl: true,
+        slackUserId: true,
+      },
     });
 
     if (!agent) {
@@ -309,7 +326,9 @@ export class GroupsService {
           where: { id: agent.id },
           data: { slackUserId: foundUserId },
         });
-        this.logger.log(`Auto-discovered Slack user ID for "${agent.name}" via email`);
+        this.logger.log(
+          `Auto-discovered Slack user ID for "${agent.name}" via email`,
+        );
       }
     }
 
@@ -338,7 +357,9 @@ export class GroupsService {
         slackUserId,
       );
       if (invited) {
-        this.logger.log(`Agent "${agent.name}" invited to Slack channel ${group.slackChannelName}`);
+        this.logger.log(
+          `Agent "${agent.name}" invited to Slack channel ${group.slackChannelName}`,
+        );
       }
     }
 
@@ -396,7 +417,9 @@ export class GroupsService {
         membership.agent.slackUserId,
       );
       if (removed) {
-        this.logger.log(`Agent "${membership.agent.name}" removed from Slack channel ${group.slackChannelName}`);
+        this.logger.log(
+          `Agent "${membership.agent.name}" removed from Slack channel ${group.slackChannelName}`,
+        );
       }
     }
 
@@ -444,7 +467,25 @@ export class GroupsService {
   /**
    * Format group response with consistent structure.
    */
-  private formatGroupResponse(group: any) {
+  private formatGroupResponse(group: {
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    slackChannelId: string | null;
+    slackChannelName: string | null;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    _count?: { members?: number; projects?: number };
+    members?: Array<{
+      id: string;
+      role: string;
+      joinedAt: Date;
+      agent: unknown;
+    }>;
+    projects?: unknown[];
+  }) {
     return {
       id: group.id,
       name: group.name,
@@ -457,7 +498,7 @@ export class GroupsService {
       updatedAt: group.updatedAt,
       memberCount: group._count?.members ?? group.members?.length ?? 0,
       projectCount: group._count?.projects ?? group.projects?.length ?? 0,
-      members: group.members?.map((m: any) => ({
+      members: group.members?.map((m) => ({
         id: m.id,
         role: m.role,
         joinedAt: m.joinedAt,
