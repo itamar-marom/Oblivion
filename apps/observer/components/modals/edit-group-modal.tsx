@@ -423,7 +423,7 @@ export function EditGroupModal({
               </div>
               <h3 className="text-lg font-semibold mb-2">Archive Group?</h3>
               <p className="text-sm text-zinc-400 mb-6">
-                This will archive "{group.name}" and all its projects.
+                This will archive &quot;{group.name}&quot; and all its projects.
                 <br />
                 Members will be removed from this group.
               </p>

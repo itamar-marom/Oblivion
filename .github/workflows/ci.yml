@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
 
 jobs:
   lint:
@@ -23,7 +23,7 @@ jobs:
         run: pnpm install
 
       - name: Run linting
-        run: pnpm lint
+        run: npx turbo lint
 
       - name: Check formatting
         run: pnpm format --check

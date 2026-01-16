@@ -249,7 +249,8 @@ export function useNexusSocket(handlers: WebSocketEventHandlers = {}): UseNexusS
 
     const token = getToken();
     if (!token) {
-      setError("No auth token available");
+      // Schedule setState to avoid synchronous call in effect
+      Promise.resolve().then(() => setError("No auth token available"));
       return;
     }
 

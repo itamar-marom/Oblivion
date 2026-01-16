@@ -35,12 +35,25 @@ export function CreateRegistrationTokenModal({
   // Fetch groups when modal opens
   useEffect(() => {
     if (isOpen) {
-      setIsLoadingGroups(true);
-      groupsApi
-        .list()
-        .then((data) => setGroups(data))
-        .catch(() => setError("Failed to load groups"))
-        .finally(() => setIsLoadingGroups(false));
+      let cancelled = false;
+
+      const fetchGroups = async () => {
+        setIsLoadingGroups(true);
+        try {
+          const data = await groupsApi.list();
+          if (!cancelled) setGroups(data);
+        } catch {
+          if (!cancelled) setError("Failed to load groups");
+        } finally {
+          if (!cancelled) setIsLoadingGroups(false);
+        }
+      };
+
+      void fetchGroups();
+
+      return () => {
+        cancelled = true;
+      };
     }
   }, [isOpen]);
 

@@ -275,7 +275,7 @@ export function EditProjectModal({
               </div>
               <h3 className="text-lg font-semibold mb-2">Archive Project?</h3>
               <p className="text-sm text-zinc-400 mb-6">
-                This will archive "{project.name}".
+                This will archive &quot;{project.name}&quot;.
                 <br />
                 Tasks will no longer route to this project.
               </p>
