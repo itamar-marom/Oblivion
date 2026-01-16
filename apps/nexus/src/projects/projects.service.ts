@@ -373,7 +373,10 @@ export class ProjectsService {
 
     return {
       projectId,
-      total: Object.values(statusCounts).reduce((a, b) => a + b, 0),
+      total: Object.values(statusCounts).reduce(
+        (a: number, b: number) => a + b,
+        0,
+      ),
       todo: statusCounts['TODO'] || 0,
       claimed: statusCounts['CLAIMED'] || 0,
       inProgress: statusCounts['IN_PROGRESS'] || 0,

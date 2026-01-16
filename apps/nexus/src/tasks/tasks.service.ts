@@ -400,7 +400,7 @@ export class TasksService implements OnModuleInit {
     slackChannelId: string,
     slackThreadTs: string,
   ) {
-    return this.prisma.task.update({
+    return await this.prisma.task.update({
       where: { id: taskId },
       data: { slackChannelId, slackThreadTs },
     });
@@ -410,7 +410,7 @@ export class TasksService implements OnModuleInit {
    * Find task by ClickUp task ID.
    */
   async findByClickupId(clickupTaskId: string) {
-    return this.prisma.task.findUnique({
+    return await this.prisma.task.findUnique({
       where: { clickupTaskId },
       include: {
         project: {
@@ -432,7 +432,7 @@ export class TasksService implements OnModuleInit {
    * Find task by internal ID.
    */
   async findById(taskId: string) {
-    return this.prisma.task.findUnique({
+    return await this.prisma.task.findUnique({
       where: { id: taskId },
       include: {
         project: {
