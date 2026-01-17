@@ -85,7 +85,7 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: pnpm --filter observer exec playwright install --with-deps chromium
 
       - name: Generate Prisma Client
         run: pnpm --filter nexus db:generate
