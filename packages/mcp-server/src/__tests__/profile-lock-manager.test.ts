@@ -94,6 +94,43 @@ describe('ProfileLockManager - Integration Tests', () => {
     await releaseProfileLock(testPid);
   });
 
+  it('should detect PID reuse via start time mismatch', async () => {
+    // CRITICAL SECURITY TEST: PID reuse attack prevention
+
+    // Create a lock manually with WRONG start time (simulating reused PID)
+    const testPid = process.pid;
+    const oblivionDir = path.join(TEST_DIR, '.oblivion');
+    await fs.promises.mkdir(oblivionDir, { recursive: true });
+
+    const locksPath = path.join(oblivionDir, 'profile-locks.json');
+    const fakeOldStartTime = Date.now() - 99999999; // Very old start time (not this process)
+
+    await fs.promises.writeFile(
+      locksPath,
+      JSON.stringify({
+        locks: {
+          [testPid]: {
+            profile: 'reused-pid-agent',
+            pid: testPid,
+            startTime: fakeOldStartTime, // Wrong start time!
+            lockedAt: new Date().toISOString(),
+          },
+        },
+      }),
+      { mode: 0o600 }
+    );
+
+    // getProfileForPid should detect the start time mismatch
+    const profile = await getProfileForPid(testPid);
+
+    // Should return null because start time doesn't match this process
+    expect(profile).toBeNull();
+
+    // The lock should have been automatically cleaned up
+    const locks = await getAllLocks();
+    expect(locks.find(l => l.pid === testPid)).toBeUndefined();
+  });
+
   it('should allow same PID to reclaim after release', async () => {
     const testPid = process.pid;
     const profiles = ['reclaim-test'];
