@@ -109,25 +109,39 @@ describe('NexusClient - Error Handling', () => {
 });
 
 describe('NexusClient - Retry Configuration', () => {
-  it('should not retry by default for non-idempotent operations', () => {
+  it('should configure retries with exponential backoff', () => {
     const client = new NexusClient({
       baseUrl: 'http://localhost:3000',
       clientId: 'test-client',
       clientSecret: 'test-secret',
     });
 
-    // POST is non-idempotent by default
-    const isIdempotent = undefined ?? ('POST' !== 'POST');
-    expect(isIdempotent).toBe(false);
+    const retryConfig = (client as any).retryConfig;
+    expect(retryConfig.maxRetries).toBe(3);
+    expect(retryConfig.baseDelayMs).toBe(1000);
+    expect(retryConfig.maxDelayMs).toBe(10000);
   });
 
-  it('should retry by default for idempotent methods', () => {
-    const methods = ['GET', 'PUT', 'PATCH', 'DELETE'];
+  it('should allow custom retry configuration', () => {
+    const client = new NexusClient(
+      {
+        baseUrl: 'http://localhost:3000',
+        clientId: 'test-client',
+        clientSecret: 'test-secret',
+      },
+      {
+        retryConfig: {
+          maxRetries: 5,
+          baseDelayMs: 500,
+          maxDelayMs: 5000,
+        },
+      }
+    );
 
-    methods.forEach(method => {
-      const isIdempotent = undefined ?? (method !== 'POST');
-      expect(isIdempotent).toBe(true);
-    });
+    const retryConfig = (client as any).retryConfig;
+    expect(retryConfig.maxRetries).toBe(5);
+    expect(retryConfig.baseDelayMs).toBe(500);
+    expect(retryConfig.maxDelayMs).toBe(5000);
   });
 });
 
