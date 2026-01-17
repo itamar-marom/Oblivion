@@ -76,6 +76,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('apps/observer/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
       - name: Generate Prisma Client
         run: pnpm --filter nexus db:generate
 
