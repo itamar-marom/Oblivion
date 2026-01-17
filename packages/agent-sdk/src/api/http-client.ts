@@ -14,6 +14,18 @@ import { httpLogger } from '../utils/logger.js';
 const DEFAULT_TIMEOUT_MS = 30000;
 
 /**
+ * Retry configuration for transient errors.
+ */
+export interface RetryConfig {
+  /** Maximum number of retry attempts. Default: 3 */
+  maxRetries: number;
+  /** Base delay in milliseconds for exponential backoff. Default: 1000 */
+  baseDelayMs: number;
+  /** Maximum delay in milliseconds. Default: 10000 */
+  maxDelayMs: number;
+}
+
+/**
  * Options for HTTP requests.
  */
 export interface RequestOptions {
@@ -25,6 +37,13 @@ export interface RequestOptions {
   retryOn401?: boolean;
 
   /**
+   * Whether to retry on transient errors (502/503/504/timeout).
+   * Set to false for non-idempotent operations (POST by default).
+   * Default: true for GET/PUT/PATCH/DELETE, false for POST
+   */
+  retryOnTransient?: boolean;
+
+  /**
    * Request timeout in milliseconds.
    * Default: 30000 (30 seconds)
    */
@@ -34,22 +53,47 @@ export interface RequestOptions {
 export interface HttpClientConfig {
   /** Default timeout for all requests in milliseconds. Default: 30000 */
   defaultTimeout?: number;
+  /** Retry configuration for transient errors. */
+  retryConfig?: RetryConfig;
 }
 
 export class HttpClient {
   private baseUrl: string;
   private tokenManager: TokenManager;
   private defaultTimeout: number;
+  private retryConfig: RetryConfig;
 
   constructor(baseUrl: string, tokenManager: TokenManager, config?: HttpClientConfig) {
     this.baseUrl = baseUrl;
     this.tokenManager = tokenManager;
     this.defaultTimeout = config?.defaultTimeout ?? DEFAULT_TIMEOUT_MS;
+    this.retryConfig = {
+      maxRetries: 3,
+      baseDelayMs: 1000,
+      maxDelayMs: 10000,
+      ...config?.retryConfig,
+    };
+  }
+
+  /**
+   * Sleep for specified milliseconds (for retry backoff).
+   */
+  private async sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Calculate exponential backoff delay with jitter.
+   */
+  private calculateBackoff(attempt: number): number {
+    const exponentialDelay = this.retryConfig.baseDelayMs * Math.pow(2, attempt);
+    const jitter = Math.random() * 1000; // 0-1s random jitter
+    return Math.min(exponentialDelay + jitter, this.retryConfig.maxDelayMs);
   }
 
   /**
    * Make an authenticated request to Nexus.
-   * Supports automatic retry on 401 with token refresh (controlled by options.retryOn401).
+   * Supports automatic retry on 401 with token refresh and transient errors.
    */
   async request<T>(
     method: string,
@@ -59,7 +103,16 @@ export class HttpClient {
   ): Promise<T> {
     const retryOn401 = options?.retryOn401 ?? true;
     const timeout = options?.timeout ?? this.defaultTimeout;
-    return this.doRequest<T>(method, path, body, retryOn401, timeout, false);
+
+    // POST operations are non-idempotent by default (prevent duplicate claims/posts)
+    // GET/PUT/PATCH/DELETE are idempotent and safe to retry
+    const retryOnTransient = options?.retryOnTransient ?? (method !== 'POST');
+
+    return this.doRequest<T>(method, path, body, {
+      retryOn401,
+      retryOnTransient,
+      timeout,
+    });
   }
 
   /**
@@ -69,60 +122,133 @@ export class HttpClient {
     method: string,
     path: string,
     body: unknown | undefined,
-    retryOn401: boolean,
-    timeout: number,
-    isRetry: boolean
+    opts: { retryOn401: boolean; retryOnTransient: boolean; timeout: number }
   ): Promise<T> {
-    const token = await this.tokenManager.getToken();
-    const url = `${this.baseUrl}${path}`;
+    const maxRetries = opts.retryOnTransient ? this.retryConfig.maxRetries : 0;
+    let lastError: Error | null = null;
 
-    httpLogger.debug(`${method} ${path}${isRetry ? ' (retry)' : ''} [timeout: ${timeout}ms]`);
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const token = await this.tokenManager.getToken();
+      const url = `${this.baseUrl}${path}`;
 
-    // Set up timeout with AbortController
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
+      httpLogger.debug(
+        `${method} ${path} [attempt ${attempt + 1}/${maxRetries + 1}, timeout: ${opts.timeout}ms]`
+      );
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
-      });
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof Error && error.name === 'AbortError') {
-        httpLogger.error(`${method} ${path} timed out after ${timeout}ms`);
-        throw new TimeoutError(`Request timed out after ${timeout}ms`, timeout, path);
+      // Set up timeout with AbortController
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), opts.timeout);
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method,
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: body ? JSON.stringify(body) : undefined,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+      } catch (error) {
+        clearTimeout(timeoutId);
+
+        // Handle timeout errors
+        if (error instanceof Error && error.name === 'AbortError') {
+          httpLogger.error(`${method} ${path} timed out after ${opts.timeout}ms`);
+          lastError = new TimeoutError(`Request timed out after ${opts.timeout}ms`, opts.timeout, path);
+
+          // Retry on timeout if enabled and attempts remain
+          if (opts.retryOnTransient && attempt < maxRetries) {
+            const delay = this.calculateBackoff(attempt);
+            httpLogger.info(`Retrying after timeout in ${delay}ms...`);
+            await this.sleep(delay);
+            continue;
+          }
+
+          throw lastError;
+        }
+
+        // Other fetch errors (network failures)
+        lastError = error as Error;
+        if (opts.retryOnTransient && attempt < maxRetries) {
+          const delay = this.calculateBackoff(attempt);
+          httpLogger.info(`Network error, retrying in ${delay}ms...`);
+          await this.sleep(delay);
+          continue;
+        }
+
+        throw error;
       }
-      throw error;
-    } finally {
-      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        httpLogger.error(`${method} ${path} failed:`, response.status, errorText);
+
+        // Handle 401 with token refresh (separate from transient retry logic)
+        if (response.status === 401 && opts.retryOn401 && attempt === 0) {
+          httpLogger.info('Got 401, refreshing token and retrying...');
+          await this.tokenManager.refresh();
+          // Retry immediately (not counted against maxRetries)
+          const token = await this.tokenManager.getToken();
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), opts.timeout);
+
+          try {
+            response = await fetch(url, {
+              method,
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+              body: body ? JSON.stringify(body) : undefined,
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+              return this.parseResponse<T>(response);
+            }
+
+            // 401 after refresh = auth failure
+            if (response.status === 401) {
+              throw new AuthError('Unauthorized after token refresh', 401);
+            }
+          } catch (error) {
+            clearTimeout(timeoutId);
+            throw error;
+          }
+        }
+
+        // Retry on server errors (502/503/504)
+        if ([502, 503, 504].includes(response.status) && opts.retryOnTransient && attempt < maxRetries) {
+          const delay = this.calculateBackoff(attempt);
+          httpLogger.info(`Got ${response.status}, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+          await this.sleep(delay);
+          continue;
+        }
+
+        if (response.status === 401) {
+          throw new AuthError('Unauthorized', 401);
+        }
+
+        throw new ApiError(errorText || 'Request failed', response.status, path);
+      }
+
+      // Success - parse and return
+      return this.parseResponse<T>(response);
     }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      httpLogger.error(`${method} ${path} failed:`, response.status, errorText);
+    // Should never reach here, but for type safety
+    throw lastError || new ApiError('Max retries exceeded', 0, path);
+  }
 
-      // Handle 401 with automatic retry (if enabled and not already a retry)
-      if (response.status === 401 && retryOn401 && !isRetry) {
-        httpLogger.info('Got 401, refreshing token and retrying...');
-        await this.tokenManager.refresh();
-        return this.doRequest<T>(method, path, body, retryOn401, timeout, true);
-      }
-
-      if (response.status === 401) {
-        throw new AuthError('Unauthorized', 401);
-      }
-
-      throw new ApiError(errorText || 'Request failed', response.status, path);
-    }
-
-    // Handle empty responses
+  /**
+   * Parse response body.
+   */
+  private async parseResponse<T>(response: Response): Promise<T> {
     const text = await response.text();
     if (!text) {
       return {} as T;
