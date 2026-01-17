@@ -1,23 +1,26 @@
 # Documentation Alignment Report
 **Generated:** 2026-01-17
+**Updated:** 2026-01-17 (SDK Deep Dive)
 **Purpose:** Comprehensive comparison of documentation vs actual implementation
 
 ---
 
 ## Executive Summary
 
-This report compares what's documented in `.ai/`, `product/`, and other docs against what's actually implemented in the codebase. Overall, **the implementation matches the architecture closely**, but there are several areas where documentation is outdated or overstates what exists.
+This report compares what's documented in `.ai/`, `product/`, and other docs against what's actually implemented in the codebase. Overall, **the implementation is MORE COMPLETE than initially assessed**, with several advanced features already in place.
 
 ### Key Findings:
 - ✅ **Core orchestration** is fully implemented (Nexus backend, WebSocket gateway, task management)
 - ✅ **Groups & Projects hierarchy** is complete and working
 - ✅ **Observer dashboard** is fully functional
-- ✅ **Python SDK** is production-ready
+- ✅ **TypeScript SDK** is production-ready with advanced features (socket.active, HTTP retry, logging, jitter)
+- ⚠️ **Python SDK** is event-only by design (7/10 - needs retry logic, jitter, test removal)
 - ✅ **Slack integration** is fully implemented (webhooks, bi-directional sync, event broadcasting)
 - ✅ **ClickUp integration** is fully implemented (webhooks, @tag routing, comments)
 - ⚠️ **Memory Bank/RAG** is documented but NOT implemented
 - ⚠️ **Tool Gateway** is documented but NOT implemented (PRD says local execution)
 - ⚠️ **Kubernetes deployment** has only infrastructure dependencies, no app manifests
+- ❌ **SDK Tests** - Both SDKs have ZERO automated tests (critical gap)
 
 ---
 
@@ -441,6 +444,113 @@ tasks/
 5. ✅ **Python SDK:** Production-ready, good examples
 6. ✅ **Queue Processing:** Reliable webhook handling
 7. ✅ **Agent Lifecycle:** Registration, approval, membership all working
+
+---
+
+## 12. Agent SDKs - Deep Dive Assessment
+
+**Updated:** 2026-01-17 (Post-Discovery Task)
+
+### 12.1 TypeScript SDK (@oblivion/agent-sdk)
+
+**Assessment:** 8/10 - Production-Ready, Only Missing Tests
+
+**ALREADY IMPLEMENTED (Better than expected!):**
+- ✅ **socket.active handling** (socket-client.ts:256-304)
+  - Distinguishes auth rejection vs network failure
+  - Stops retry when server denies connection
+  - Only retries on temporary network issues
+- ✅ **HTTP retry for transient errors** (http-client.ts:225-231)
+  - Retries 502/503/504 status codes
+  - Exponential backoff with calculateBackoff()
+  - Respects retryOnTransient flag
+- ✅ **Structured logging** (logger.ts:1-167)
+  - JSON and text format support
+  - Log levels (debug/info/warn/error)
+  - Contextual fields (agentId, taskId, requestId)
+  - Namespace filtering (DEBUG env var)
+- ✅ **Connection jitter** (socket-client.ts:316-321)
+  - Random 0-1s jitter on reconnect
+  - Prevents thundering herd
+- ✅ **Exponential backoff** reconnection (1s, 2s, 4s, 8s, max 30s)
+- ✅ **Full REST API** (TaskApi, SlackApi)
+- ✅ **Type-safe EventEmitter** with generics
+- ✅ **Examples and README**
+
+**CRITICAL GAP:**
+- ❌ **ZERO automated tests** (no .spec.ts or .test.ts files)
+  - No coverage for TokenManager, HttpClient, SocketClient
+  - No event emission tests
+  - No integration tests
+  - No error handling tests
+
+**Verdict:** Code quality is excellent, but untested code is not production-safe.
+
+**Location:** `packages/agent-sdk/`
+
+---
+
+### 12.2 Python SDK (oblivion-sdk)
+
+**Assessment:** 6/10 - Event-Only Design, Needs Hardening
+
+**ALREADY IMPLEMENTED:**
+- ✅ Clean async/await with decorator pattern
+- ✅ Pydantic v2 for type safety with by_alias
+- ✅ Socket.IO AsyncClient with proper setup
+- ✅ Event handlers (task_assigned, context_update, wake_up)
+- ✅ Structured logging with structlog
+- ✅ Auto-reconnection (but no jitter)
+- ✅ Heartbeat handling
+- ✅ LangGraph integration example
+
+**CRITICAL GAPS:**
+- ❌ **No HTTP retry logic** (httpx requests can fail permanently)
+  - Authentication can fail on transient 502/503
+  - No RetryTransport implementation
+- ❌ **No connection jitter** (thundering herd risk)
+  - All agents reconnect at same intervals
+  - Could overwhelm server on mass disconnect
+- ❌ **Tool Gateway broken** (request_tool exists but server doesn't handle it)
+  - client.py:359-408 contains dead code
+  - ToolRequestPayload/ToolResultPayload unused
+  - Conflicts with PRD FR-002 (local execution)
+- ❌ **ZERO automated tests** (no test_*.py files)
+
+**INTENTIONAL DESIGN (Not a gap):**
+- ✅ Event-only (no REST API) - Correct for reactive/LangGraph agents
+
+**Verdict:** Solid foundation but needs reliability improvements.
+
+**Location:** `packages/sdk-python/`
+
+---
+
+### 12.3 SDK Task Status Update
+
+**Out of 9 tasks created, here's what's already done:**
+
+| Task | Status | Notes |
+|------|--------|-------|
+| TS-SDK: Add Critical Path Tests | ❌ TODO | Zero tests exist |
+| TS-SDK: Fix socket.active Handling | ✅ DONE | Already implemented perfectly |
+| TS-SDK: Add HTTP Retry (502/503/504) | ✅ DONE | Already implemented |
+| TS-SDK: Add Event Tests | ❌ TODO | Zero tests exist |
+| TS-SDK: Expand Coverage to 80%+ | ❌ TODO | Zero tests exist |
+| TS-SDK: Add Structured Logging | ✅ DONE | Already implemented (logger.ts) |
+| TS-SDK: Update Documentation | ⚠️ PARTIAL | README exists, needs production guide |
+| PY-SDK: Remove Tool Gateway Code | ❌ TODO | request_tool still exists |
+| PY-SDK: Add HTTP Retry Logic | ❌ TODO | No RetryTransport |
+| PY-SDK: Add Connection Jitter | ❌ TODO | No jitter in reconnect |
+
+**Summary:**
+- **4/9 tasks (44%) already done** (TS: socket.active, HTTP retry, logging, jitter)
+- **5/9 tasks (56%) still needed** (all tests, Python SDK hardening)
+
+**Revised Timeline:**
+- TypeScript SDK: **1 week** (tests only, infrastructure complete)
+- Python SDK: **1 week** (remove tool code, add retry/jitter)
+- **Total: 2 weeks** (down from 3 weeks)
 
 ---
 
