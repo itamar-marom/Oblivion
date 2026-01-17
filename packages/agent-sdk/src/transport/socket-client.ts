@@ -248,17 +248,58 @@ export class SocketClient {
 
   /**
    * Handle disconnect and trigger reconnection if enabled.
+   *
+   * Uses socket.active to distinguish:
+   * - socket.active === false: Server forcibly closed (auth failure) - don't reconnect
+   * - socket.active === true: Network failure - attempt reconnection
    */
   private handleDisconnect(reason: string): void {
+    socketLogger.warn('Disconnected from Nexus:', reason);
+
+    // Check socket.active BEFORE setting socket to null
+    const wasActive = this.socket?.active ?? false;
+    const socketRef = this.socket;
     this.socket = null;
 
+    // If socket.active is false, server forcibly closed the connection
+    // This usually indicates auth failure or server-side rejection
+    if (!wasActive) {
+      socketLogger.error(
+        'Server denied connection (socket.active = false). ' +
+        'Likely authentication failure. Stopping automatic reconnection.'
+      );
+      this.setState('disconnected');
+
+      // Emit error event so application can handle (e.g., refresh token)
+      this.dispatchEvent('error', {
+        type: 'CONNECTION_DENIED' as EventType,
+        payload: {
+          reason,
+          message: 'Server rejected connection - check authentication',
+        },
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    // Don't reconnect on client-initiated disconnects
+    if (reason === 'io client disconnect') {
+      socketLogger.info('Client initiated disconnect - not reconnecting');
+      this.setState('disconnected');
+      return;
+    }
+
+    // socket.active === true means temporary network failure
+    // Attempt reconnection if configured
     if (
       this.config.autoReconnect &&
       this.reconnectAttempts < (this.config.maxReconnectAttempts ?? 10)
     ) {
+      socketLogger.info('Temporary network failure (socket.active = true). Scheduling reconnection.');
       this.scheduleReconnect();
     } else {
       this.setState('disconnected');
+      socketLogger.warn('Max reconnection attempts reached or auto-reconnect disabled');
     }
   }
 
