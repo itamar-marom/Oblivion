@@ -418,6 +418,9 @@ docker-compose.override.yml
 *.sql
 *.mysql
 
+# BUT: Allow Prisma migration files
+!**/prisma/migrations/**/*.sql
+
 
 # ==========================================
 # LOGS & TEMPORARY FILES
