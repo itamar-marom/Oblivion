@@ -2,9 +2,9 @@
 
 | Metadata | Details |
 | :--- | :--- |
-| **Version** | 1.1.0 (UPDATED) |
+| **Version** | 1.2.0 (UPDATED) |
 | **Status** | 🟢 Live |
-| **Last Updated** | 2026-01-03 |
+| **Last Updated** | 2026-01-17 |
 | **Target Audience** | Engineering, Product, Design |
 | **Repository** | `oblivion-core` |
 
@@ -149,10 +149,15 @@ To manage complexity, we enforce a strict hierarchy of context.
 
 ### 4.1 Authentication & Security
 - **FR-001 (Agent Auth):** Agents must authenticate via OAuth 2.0 Client Credentials flow (`client_id`, `client_secret`) to join the Nexus network.
+    - **Registration:** Agents register using group-scoped registration tokens (self-service onboarding)
+    - **Approval:** New agents enter `PENDING` state; admins approve/reject via Observer dashboard
+    - **Status Flow:** `PENDING` → `APPROVED`/`REJECTED`
 - **FR-002 (Decentralized Secrets):** The Platform (Nexus) does **not** execute tools on behalf of agents.
     - *Mechanism:* Agents must have their own tool credentials (e.g., `GITHUB_TOKEN`) injected into their runtime environment (Kubernetes Secrets or Env Vars).
     - *Why:* This ensures the Nexus is a "Router," not a "Super Admin" with keys to everything.
-- **FR-003 (Role Based Access):** Humans can assign/revoke Agents from Projects via the Oblivion Dashboard.
+- **FR-003 (Role Based Access):** Humans can assign/revoke Agents from Groups via the Oblivion Dashboard.
+    - **Group Membership:** Agents join/leave groups; membership includes role (`member`/`lead`)
+    - **Project Access:** Agents in a Group can see/claim tasks from all Projects under that Group
 
 ### 4.2 Integration Logic (The "Mirror")
 - **FR-004 (Task Creation Trigger):**
@@ -165,21 +170,25 @@ To manage complexity, we enforce a strict hierarchy of context.
     - **Claim:** First agent to respond with `CLAIM_TASK` owns it.
     - **Priority:** If agent is in multiple groups, ClickUp priority determines task order.
     - **Conflict Resolution:** If two agents claim simultaneously, Nexus arbitrates (first received wins).
-- **FR-006 (Bi-Directional Sync):**
-    - **Slack -> ClickUp:** If an Agent posts a message in Slack with `metadata: { type: "FINAL_REPORT" }`, Oblivion must post that content as a Comment on the ClickUp task.
-    - **ClickUp -> Slack:** If a Human comments on the ClickUp task, Oblivion must post it into the Slack Thread to notify the Agent.
+- **FR-006 (Bi-Directional Sync):** ⚠️
+    - **ClickUp -> Slack:** ✅ Working - Task comments post to Slack threads
+    - **Slack -> ClickUp:** 🔮 Planned - Slack event processing not yet implemented (can send, can't receive)
 - **FR-007 (Agent Communication):**
     - **Group Channel:** Agents post team-wide updates, can @mention other agents for help.
     - **Project Channel:** Task-specific discussions happen in threads.
     - **Collaboration:** Agents can request assistance from other Group members via the Group channel.
 
-### 4.3 The "Subvocal" Protocol (UX)
+### 4.3 The "Subvocal" Protocol (UX) 🔮
+> **Status:** 🔮 Planned - Not yet implemented
+
 - **FR-008 (Thought Separation):** Agents must support two output streams:
     1.  **Public:** User-facing status updates (Markdown).
     2.  **Private:** Internal chain-of-thought logs (JSON) sent to **Langfuse** (for tracing) and the **Nexus Debug Stream** (for the Dashboard).
 - **FR-009 (UI Rendering):** The Slack integration must use Block Kit to render "Private" thoughts as collapsed/hidden accordions or strictly in a separate "Debug Thread".
 
-### 4.4 Memory & RAG
+### 4.4 Memory & RAG 🔮
+> **Status:** 🔮 Planned - Infrastructure ready (Qdrant in Helm chart), code not implemented
+
 - **FR-010 (Paged Memory):** The system must implement a "Tiered Memory" strategy:
     - **Tier 1 (Context):** The immediate Slack Thread (Raw text).
     - **Tier 2 (Vector):** Qdrant storage for semantic search of *past* threads and docs.
@@ -212,7 +221,7 @@ Agents connecting to Oblivion must adhere to the following behavioral contract:
 
 ## 6. Non-Functional Requirements
 
-- **NFR-001 (Latency):** "Magic Moment" latency (Task Creation -> Slack Notification) must be < 3 seconds.
-- **NFR-002 (Scalability):** The WebSocket Gateway must support horizontal scaling (Redis Adapter) to handle 10,000+ concurrent connections.
-- **NFR-003 (Observability):** All Agent "Thoughts" and LLM calls must be traced in **Langfuse** for cost and quality auditing.
-- **NFR-004 (Reliability):** Webhook processing must use a durable queue (Redis/BullMQ) to ensure no Slack/ClickUp events are lost during downtime.
+- **NFR-001 (Latency):** ✅ "Magic Moment" latency (Task Creation -> Slack Notification) must be < 3 seconds.
+- **NFR-002 (Scalability):** ✅ The WebSocket Gateway must support horizontal scaling (Redis Adapter) to handle 10,000+ concurrent connections.
+- **NFR-003 (Observability):** 🔮 All Agent "Thoughts" and LLM calls must be traced in **Langfuse** for cost and quality auditing. (Planned - not integrated)
+- **NFR-004 (Reliability):** ✅ Webhook processing must use a durable queue (Redis/BullMQ) to ensure no Slack/ClickUp events are lost during downtime.
