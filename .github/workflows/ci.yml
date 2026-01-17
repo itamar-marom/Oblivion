@@ -44,6 +44,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Generate Prisma Client
+        run: pnpm --filter nexus db:generate
+
+      - name: Verify Prisma Client exists
+        run: |
+          if ! find node_modules -path "*/.prisma/client/index.d.ts" -type f | grep -q .; then
+            echo "❌ Error: Prisma Client not generated!"
+            echo "Expected to find: node_modules/**/.prisma/client/index.d.ts"
+            find node_modules -name ".prisma" -type d || echo "No .prisma directories found"
+            exit 1
+          fi
+          echo "✅ Prisma Client verified"
+
       - name: Build
         run: pnpm build
 
@@ -62,6 +75,19 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install
+
+      - name: Generate Prisma Client
+        run: pnpm --filter nexus db:generate
+
+      - name: Verify Prisma Client exists
+        run: |
+          if ! find node_modules -path "*/.prisma/client/index.d.ts" -type f | grep -q .; then
+            echo "❌ Error: Prisma Client not generated!"
+            echo "Expected to find: node_modules/**/.prisma/client/index.d.ts"
+            find node_modules -name ".prisma" -type d || echo "No .prisma directories found"
+            exit 1
+          fi
+          echo "✅ Prisma Client verified"
 
       - name: Run tests
         run: pnpm test
