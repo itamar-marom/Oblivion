@@ -13,11 +13,11 @@ This report compares what's documented in `.ai/`, `product/`, and other docs aga
 - ✅ **Groups & Projects hierarchy** is complete and working
 - ✅ **Observer dashboard** is fully functional
 - ✅ **Python SDK** is production-ready
+- ✅ **Slack integration** is fully implemented (webhooks, bi-directional sync, event broadcasting)
+- ✅ **ClickUp integration** is fully implemented (webhooks, @tag routing, comments)
 - ⚠️ **Memory Bank/RAG** is documented but NOT implemented
-- ⚠️ **Tool Gateway** is documented but NOT implemented
+- ⚠️ **Tool Gateway** is documented but NOT implemented (PRD says local execution)
 - ⚠️ **Kubernetes deployment** has only infrastructure dependencies, no app manifests
-- ⚠️ **Slack message ingestion** is partially stubbed
-- ⚠️ **Bidirectional sync** is incomplete (ClickUp→Slack works, Slack→ClickUp is limited)
 
 ---
 
@@ -234,23 +234,25 @@ This report compares what's documented in `.ai/`, `product/`, and other docs aga
 - Message posting
 - Bidirectional sync
 
-**Actually Implemented:** ✅ MOSTLY COMPLETE
+**Actually Implemented:** ✅ COMPLETE
 - ✅ Channel creation with `oblivion-` prefix
 - ✅ Rich Block Kit formatting
 - ✅ Task messages with priority emojis
 - ✅ Thread replies
 - ✅ Message reading (getThreadMessages)
+- ✅ Slack Events API webhook handler (webhooks.controller.ts:120-224)
+- ✅ Message event processing (webhook.processor.ts:377-523)
+- ✅ Slack → ClickUp sync (posts messages as ClickUp comments, line 456-471)
+- ✅ SLACK_MESSAGE and CONTEXT_UPDATE events broadcast to agents
+- ✅ @mention handling with WAKE_UP events (line 528-577)
 - ⚠️ OAuth flow not visible (token assumed from env var)
-- ❌ Slack event webhook handler NOT implemented (can't receive messages)
-- ❌ Slack → ClickUp sync NOT working (no message ingestion)
 
-**Location:** `apps/nexus/src/integrations/slack/`
+**Locations:**
+- Integration service: `apps/nexus/src/integrations/slack/`
+- Webhook handler: `apps/nexus/src/webhooks/webhooks.controller.ts:120-224`
+- Event processor: `apps/nexus/src/webhooks/processors/webhook.processor.ts:348-578`
 
-**Critical Gap:**
-- Slack service can POST messages, but cannot RECEIVE them
-- Webhook endpoint exists (`/webhooks/slack`) but processor only handles `url_verification`
-- No `message` event processing
-- FR-006 (Bi-Directional Sync) is HALF implemented
+**FR-006 (Bi-Directional Sync):** ✅ FULLY IMPLEMENTED
 
 ---
 
@@ -344,7 +346,7 @@ This report compares what's documented in `.ai/`, `product/`, and other docs aga
 | FR-003: Role-Based Access | ✅ Complete | Observer dashboard has agent/group management |
 | FR-004: Task Creation Trigger | ✅ Complete | ClickUp webhook → @tag parsing → routing |
 | FR-005: Task Claiming | ✅ Complete | First-come-first-served with priority |
-| FR-006: Bi-Directional Sync | ⚠️ Partial | ClickUp→Slack works, Slack→ClickUp NOT working |
+| FR-006: Bi-Directional Sync | ✅ Complete | Webhook processor handles Slack events, syncs to ClickUp |
 | FR-007: Agent Communication | ✅ Complete | Group/project channels, WebSocket events |
 | FR-008: Thought Separation | ❌ Not Implemented | No public/private streams |
 | FR-009: UI Rendering | ❌ Not Implemented | No Block Kit thought accordion |
@@ -355,8 +357,8 @@ This report compares what's documented in `.ai/`, `product/`, and other docs aga
 | FR-014: Agent Membership | ✅ Complete | Join/leave via Observer |
 
 **Summary:**
-- **10/14 requirements** fully met (71%)
-- **2/14 partially** met (14%)
+- **11/14 requirements** fully met (79%)
+- **1/14 partially** met (7%)
 - **2/14 not** met (14%)
 
 ---

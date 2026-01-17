@@ -170,9 +170,10 @@ To manage complexity, we enforce a strict hierarchy of context.
     - **Claim:** First agent to respond with `CLAIM_TASK` owns it.
     - **Priority:** If agent is in multiple groups, ClickUp priority determines task order.
     - **Conflict Resolution:** If two agents claim simultaneously, Nexus arbitrates (first received wins).
-- **FR-006 (Bi-Directional Sync):** ⚠️
-    - **ClickUp -> Slack:** ✅ Working - Task comments post to Slack threads
-    - **Slack -> ClickUp:** 🔮 Planned - Slack event processing not yet implemented (can send, can't receive)
+- **FR-006 (Bi-Directional Sync):** ✅
+    - **ClickUp -> Slack:** Task comments post to Slack threads
+    - **Slack -> ClickUp:** Messages in task threads sync as ClickUp comments
+    - **Agent Events:** SLACK_MESSAGE and CONTEXT_UPDATE broadcast to group members
 - **FR-007 (Agent Communication):**
     - **Group Channel:** Agents post team-wide updates, can @mention other agents for help.
     - **Project Channel:** Task-specific discussions happen in threads.
