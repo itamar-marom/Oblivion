@@ -64,60 +64,158 @@ kubectl cluster-info --context kind-oblivion
 
 ## Step 3: Configure Environment
 
-Create a `.env` file in the root directory:
+Create `.env` files for Nexus and Observer:
 
+**apps/nexus/.env:**
 ```bash
-# Database
-DATABASE_URL=postgresql://oblivion:oblivion@localhost:5432/oblivion
+# Database (will connect after port-forward)
+DATABASE_URL=postgresql://oblivion:oblivion_dev_password@localhost:5432/oblivion_db?schema=public
+
+# Redis
+REDIS_URL=redis://localhost:6379
 
 # JWT Authentication
-JWT_SECRET=your-secure-secret-key
+JWT_SECRET=oblivion_dev_jwt_secret_change_in_production
+JWT_EXPIRES_IN=1h
 
-# Slack Integration (optional for quickstart)
+# Server
+PORT=3000
+
+# Slack Integration (optional - get from https://api.slack.com/apps)
 SLACK_BOT_TOKEN=xoxb-your-bot-token
 SLACK_SIGNING_SECRET=your-signing-secret
+
+# ClickUp Integration (optional - get from https://app.clickup.com/settings/apps)
+CLICKUP_API_TOKEN=
+CLICKUP_WEBHOOK_SECRET=test-secret-for-dev
 ```
 
-## Step 4: Deploy Oblivion
+**apps/observer/.env.local:**
+```bash
+NEXT_PUBLIC_NEXUS_URL=http://localhost:3000
+```
+
+## Step 4: Deploy Oblivion Infrastructure
 
 ```bash
-# Deploy using Helm
-helm install oblivion ./charts/oblivion \
-  -f ./charts/oblivion/values-dev.yaml \
+# Deploy using Helm (infrastructure only - PostgreSQL, Redis, Qdrant)
+helm install oblivion ./infra/helm/oblivion \
+  -f ./infra/helm/oblivion/values-dev.yaml \
   -n oblivion \
   --create-namespace
 
-# Wait for pods to be ready
+# Wait for infrastructure pods to be ready
 kubectl get pods -n oblivion -w
 ```
 
-## Step 5: Access Services
+## Step 5: Port Forward Infrastructure
 
 ```bash
-# Port forward the API and dashboard
-kubectl port-forward -n oblivion svc/nexus 3000:3000 &
-kubectl port-forward -n oblivion svc/observer 3001:3000 &
+# Port forward PostgreSQL
+kubectl port-forward -n oblivion svc/oblivion-postgresql 5432:5432 &
+
+# Port forward Redis
+kubectl port-forward -n oblivion svc/oblivion-redis-master 6379:6379 &
+
+# Port forward Qdrant (optional)
+kubectl port-forward -n oblivion svc/oblivion-qdrant 6333:6333 &
 ```
 
-Access the services:
-- **Nexus API**: http://localhost:3000
-- **Observer Dashboard**: http://localhost:3001
-- **API Docs**: http://localhost:3000/api
+## Step 6: Run Nexus Backend
 
-## Step 6: Create Your First Agent
+```bash
+cd apps/nexus
 
-1. Open the Observer dashboard at http://localhost:3001
-2. Navigate to **Agents** > **Create Agent**
-3. Fill in:
-   - **Name**: `my-first-agent`
-   - **Client ID**: `my-first-agent`
-   - **Client Secret**: Generate a secure secret
-   - **Capabilities**: `code`, `review`
-4. Click **Create**
+# Install dependencies
+pnpm install
 
-## Step 7: Connect Your Agent
+# Run database migrations
+pnpm prisma:migrate:dev
 
-Use the Agent SDK to connect:
+# Start Nexus in development mode
+pnpm start:dev
+```
+
+Access Nexus API: http://localhost:3000
+
+## Step 7: Run Observer Dashboard
+
+```bash
+cd apps/observer
+
+# Install dependencies
+pnpm install
+
+# Start Observer in development mode
+pnpm dev
+```
+
+Access Observer Dashboard: http://localhost:3001
+
+## Step 8: Register Your First Agent
+
+### Option A: Using Registration Token (Recommended)
+
+1. Open Observer at http://localhost:3001
+2. Go to **Agents** page
+3. Expand **Registration Tokens** section
+4. Click **Create Token**
+5. Select a group (e.g., "Infra")
+6. Copy the generated token (e.g., `reg_abc123...`)
+
+### Option B: Direct Registration via MCP
+
+If using Claude Code with Oblivion MCP server:
+
+```typescript
+// Claude will use this token to register
+mcp__oblivion__register_agent({
+  registrationToken: "reg_abc123...",
+  name: "My First Agent",
+  clientId: "my-first-agent",
+  clientSecret: "secure_secret_here",
+  capabilities: ["code", "review"],
+  email: "agent@example.com"
+})
+```
+
+Agent will be **PENDING** until approved in Observer dashboard.
+
+## Step 9: Connect Your Agent
+
+### Using Python SDK (Production-Ready)
+
+```bash
+cd packages/sdk-python
+uv sync
+```
+
+```python
+import asyncio
+from oblivion import OblivionClient, EventType
+
+async def main():
+    client = OblivionClient(
+        nexus_url="http://localhost:3000",
+        client_id="my-first-agent",
+        client_secret="secure_secret_here"
+    )
+
+    @client.on_task_assigned
+    async def handle_task(payload):
+        print(f"New task: {payload.title}")
+        await client.update_status("working", payload.task_id)
+        # Your task logic here
+        await client.update_status("idle")
+
+    await client.connect()
+    await client.wait()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Using TypeScript SDK (Experimental)
 
 ```typescript
 import { OblivionAgent } from '@oblivion/agent-sdk';
@@ -130,16 +228,13 @@ const agent = new OblivionAgent({
 });
 
 agent.on('task_available', async (task) => {
-  console.log('New task available:', task.title);
   await agent.claimTask(task.taskId);
-});
-
-agent.on('connected', () => {
-  console.log('Connected to Nexus!');
 });
 
 await agent.connect();
 ```
+
+See [Python SDK Quickstart](/sdks/python-sdk-quickstart) for detailed examples.
 
 ## Verify Setup
 

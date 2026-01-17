@@ -2,6 +2,12 @@
 
 **Purpose**: Comprehensive guide for setting up local development and deploying Oblivion to Kubernetes with Helm.
 
+> ⚠️ **Note:** This document contains some outdated references to `api-python`, `api-node`, and `services/` directories from an earlier architecture. The current structure uses `apps/nexus` (NestJS) and `apps/observer` (Next.js). For accurate quickstart instructions, see:
+> - GitHub Pages: [Quickstart Guide](../docs/docs/getting-started/quickstart.md)
+> - Repository structure: [repository-structure.md](./repository-structure.md)
+>
+> **Helm Chart Location:** `./infra/helm/oblivion` (infrastructure only - no app manifests yet)
+
 ## Prerequisites
 
 ### Required Tools (Development)
@@ -130,17 +136,64 @@ kubectl port-forward -n oblivion svc/web 3000:3000 &
 
 ### Component-Specific Setup
 
-#### Python Services
+#### Nexus (NestJS Backend)
 
 ```bash
-# Navigate to Python service
-cd services/api
+# Navigate to Nexus
+cd apps/nexus
+
+# Install dependencies
+pnpm install
+
+# Run database migrations
+pnpm prisma:migrate:dev
+
+# Generate Prisma client
+pnpm prisma:generate
+
+# Run locally (connects to K8s infrastructure via port-forward)
+pnpm start:dev
+
+# Run tests
+pnpm test
+
+# Run linting
+pnpm lint
+
+# Run type checking
+pnpm build
+```
+
+#### Observer (Next.js Dashboard)
+
+```bash
+# Navigate to Observer
+cd apps/observer
+
+# Install dependencies
+pnpm install
+
+# Run development server
+pnpm dev
+
+# Run tests
+pnpm test
+
+# Run E2E tests (Playwright)
+pnpm test:e2e
+
+# Build for production
+pnpm build
+```
+
+#### Python SDK (Agent Development)
+
+```bash
+# Navigate to Python SDK
+cd packages/sdk-python
 
 # Install dependencies
 uv sync --dev
-
-# Run locally (outside Kubernetes for development)
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # Run tests
 uv run pytest
@@ -152,55 +205,11 @@ uv run ruff check .
 uv run mypy .
 ```
 
-#### Node.js Services
+#### TypeScript SDK (Experimental)
 
 ```bash
-# Navigate to Node.js service
-cd services/api-node
-
-# Install dependencies
-pnpm install
-
-# Run locally (outside Kubernetes for development)
-pnpm dev
-
-# Run tests
-pnpm test
-
-# Run linting
-pnpm lint
-
-# Run type checking
-pnpm typecheck
-```
-
-#### Frontend Services
-
-```bash
-# Navigate to frontend service
-cd services/web
-
-# Install dependencies
-pnpm install
-
-# Run development server
-pnpm dev
-
-# Run tests
-pnpm test
-
-# Run E2E tests
-pnpm test:e2e
-
-# Build for production
-pnpm build
-```
-
-#### Shared Packages
-
-```bash
-# Navigate to shared package
-cd packages/ui
+# Navigate to TypeScript SDK
+cd packages/agent-sdk
 
 # Install dependencies
 pnpm install
@@ -208,8 +217,8 @@ pnpm install
 # Build package
 pnpm build
 
-# Run tests
-pnpm test
+# Type check
+pnpm typecheck
 ```
 
 ### Monorepo Workspace Setup
@@ -220,39 +229,31 @@ pnpm test
 # Install all workspace dependencies (from root)
 pnpm install
 
-# Python workspace (if using uv workspaces)
-# Root pyproject.toml should define:
+# Python workspace
+# Root pyproject.toml defines:
 [tool.uv.workspace]
-members = [
-    "services/*",
-    "packages/*",
-    "agents/*",
-    "mcp/*",
-]
+members = ["packages/sdk-python"]
 ```
 
 #### Inter-Package Dependencies
 
-Shared packages are referenced in service dependencies:
-
-```toml
-# services/api/pyproject.toml
-[project]
-dependencies = [
-    "oblivion-common",  # References packages/common
-    "oblivion-models",  # References packages/models
-]
-
-[tool.uv.sources]
-oblivion-common = { path = "../../packages/common", editable = true }
-oblivion-models = { path = "../../packages/models", editable = true }
+**pnpm Workspace (Node.js):**
+```json
+// Root package.json
+{
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}
 ```
 
+**TypeScript SDK usage:**
 ```json
-// services/web/package.json
+// apps/nexus/package.json (if needed)
 {
   "dependencies": {
-    "@oblivion/ui": "workspace:*"
+    "@oblivion/agent-sdk": "workspace:*"
   }
 }
 ```
@@ -453,27 +454,23 @@ kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
 
 ### Umbrella Chart Structure
 
-The Oblivion monorepo uses an umbrella Helm chart that deploys all services together:
+The Oblivion Helm chart currently deploys **infrastructure only** (PostgreSQL, Redis, Qdrant):
 
 ```
-charts/
+infra/helm/
 └── oblivion/                   # Umbrella chart
     ├── Chart.yaml              # Chart metadata & dependencies
     ├── values.yaml             # Default values (base)
     ├── values-dev.yaml         # Development overrides
-    ├── values-staging.yaml     # Staging overrides
-    ├── values-prod.yaml        # Production overrides
     ├── templates/              # Shared Kubernetes resources
-    │   ├── _helpers.tpl        # Template helpers
-    │   ├── namespace.yaml      # Namespace definition
-    │   └── externalsecret-store.yaml  # ESO SecretStore
-    └── charts/                 # Subcharts (one per service)
-        ├── api-python/         # FastAPI service
-        ├── api-node/           # Hono service
-        ├── web/                # Next.js frontend
-        ├── worker/             # Background worker
-        └── mcp-servers/        # MCP servers
+    │   └── _helpers.tpl        # Template helpers
+    └── charts/                 # Downloaded dependencies
+        ├── postgresql-16.2.5.tgz  # Bitnami PostgreSQL
+        ├── redis-20.5.0.tgz       # Bitnami Redis
+        └── qdrant-0.9.4.tgz       # Qdrant vector store
 ```
+
+**Note:** Nexus and Observer deployment manifests are not yet in the Helm chart. Applications run locally for development.
 
 ### Deploying to Local Kubernetes
 
@@ -483,9 +480,9 @@ charts/
 # Ensure you're in the right context
 kubectl config use-context kind-oblivion
 
-# Install Oblivion with development values
-helm install oblivion ./charts/oblivion \
-  -f ./charts/oblivion/values-dev.yaml \
+# Install Oblivion infrastructure
+helm install oblivion ./infra/helm/oblivion \
+  -f ./infra/helm/oblivion/values-dev.yaml \
   -n oblivion \
   --create-namespace \
   --wait \
@@ -495,42 +492,34 @@ helm install oblivion ./charts/oblivion \
 helm list -n oblivion
 kubectl get pods -n oblivion
 kubectl get svc -n oblivion
+
+# Expected: postgresql, redis-master, qdrant pods
 ```
 
 #### Upgrading Deployment
 
 ```bash
 # After making changes to charts or values
-helm upgrade oblivion ./charts/oblivion \
-  -f ./charts/oblivion/values-dev.yaml \
+helm upgrade oblivion ./infra/helm/oblivion \
+  -f ./infra/helm/oblivion/values-dev.yaml \
   -n oblivion \
   --wait
-
-# Force recreation of pods
-helm upgrade oblivion ./charts/oblivion \
-  -f ./charts/oblivion/values-dev.yaml \
-  -n oblivion \
-  --recreate-pods
 
 # Rollback if needed
 helm rollback oblivion -n oblivion
 ```
 
-#### Deploying Specific Subcharts
+#### Port Forward Infrastructure
 
 ```bash
-# Deploy only the Python API service
-helm install api-python ./charts/oblivion/charts/api-python \
-  -n oblivion \
-  --set image.tag=latest
+# Port forward PostgreSQL
+kubectl port-forward -n oblivion svc/oblivion-postgresql 5432:5432 &
 
-# Deploy only the frontend
-helm install web ./charts/oblivion/charts/web \
-  -n oblivion
+# Port forward Redis
+kubectl port-forward -n oblivion svc/oblivion-redis-master 6379:6379 &
 
-# Upgrade specific subchart
-helm upgrade api-python ./charts/oblivion/charts/api-python \
-  -n oblivion
+# Port forward Qdrant
+kubectl port-forward -n oblivion svc/oblivion-qdrant 6333:6333 &
 ```
 
 ### Helm Chart Commands
@@ -539,17 +528,17 @@ helm upgrade api-python ./charts/oblivion/charts/api-python \
 
 ```bash
 # Lint chart for errors
-helm lint ./charts/oblivion
+helm lint ./infra/helm/oblivion
 
 # Dry run (preview without applying)
-helm install oblivion ./charts/oblivion \
-  -f ./charts/oblivion/values-dev.yaml \
+helm install oblivion ./infra/helm/oblivion \
+  -f ./infra/helm/oblivion/values-dev.yaml \
   --dry-run \
   --debug
 
 # Render templates locally
-helm template oblivion ./charts/oblivion \
-  -f ./charts/oblivion/values-dev.yaml \
+helm template oblivion ./infra/helm/oblivion \
+  -f ./infra/helm/oblivion/values-dev.yaml \
   > rendered-manifests.yaml
 
 # Show computed values
