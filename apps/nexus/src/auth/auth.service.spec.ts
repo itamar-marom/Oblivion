@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UnauthorizedException, BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  UnauthorizedException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -55,7 +59,9 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         approvalStatus: 'APPROVED',
       };
 
-      jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(mockAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findUnique')
+        .mockResolvedValue(mockAgent as any);
       jest.spyOn(prisma.agent, 'update').mockResolvedValue(mockAgent as any);
       jest.spyOn(jwtService, 'sign').mockReturnValue('mock-jwt-token');
 
@@ -80,7 +86,7 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         service.validateAndIssueToken({
           client_id: 'nonexistent',
           client_secret: 'any-secret',
-        })
+        }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -94,13 +100,15 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         approvalStatus: 'APPROVED',
       };
 
-      jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(mockAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findUnique')
+        .mockResolvedValue(mockAgent as any);
 
       await expect(
         service.validateAndIssueToken({
           client_id: 'test-agent',
           client_secret: 'wrong-secret',
-        })
+        }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -113,18 +121,24 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         approvalStatus: 'APPROVED',
       };
 
-      jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(mockAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findUnique')
+        .mockResolvedValue(mockAgent as any);
 
       await expect(
         service.validateAndIssueToken({
           client_id: 'test-agent',
           client_secret: 'any',
-        })
+        }),
       ).rejects.toThrow(UnauthorizedException);
-      expect(await service.validateAndIssueToken({
-        client_id: 'test-agent',
-        client_secret: 'any',
-      }).catch(e => e.message)).toContain('disabled');
+      expect(
+        await service
+          .validateAndIssueToken({
+            client_id: 'test-agent',
+            client_secret: 'any',
+          })
+          .catch((e) => e.message),
+      ).toContain('disabled');
     });
 
     it('should reject PENDING agent', async () => {
@@ -136,18 +150,24 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         approvalStatus: 'PENDING',
       };
 
-      jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(mockAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findUnique')
+        .mockResolvedValue(mockAgent as any);
 
       await expect(
         service.validateAndIssueToken({
           client_id: 'test-agent',
           client_secret: 'any',
-        })
+        }),
       ).rejects.toThrow(UnauthorizedException);
-      expect(await service.validateAndIssueToken({
-        client_id: 'test-agent',
-        client_secret: 'any',
-      }).catch(e => e.message)).toContain('pending');
+      expect(
+        await service
+          .validateAndIssueToken({
+            client_id: 'test-agent',
+            client_secret: 'any',
+          })
+          .catch((e) => e.message),
+      ).toContain('pending');
     });
 
     it('should reject REJECTED agent', async () => {
@@ -159,18 +179,24 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         approvalStatus: 'REJECTED',
       };
 
-      jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(mockAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findUnique')
+        .mockResolvedValue(mockAgent as any);
 
       await expect(
         service.validateAndIssueToken({
           client_id: 'test-agent',
           client_secret: 'any',
-        })
+        }),
       ).rejects.toThrow(UnauthorizedException);
-      expect(await service.validateAndIssueToken({
-        client_id: 'test-agent',
-        client_secret: 'any',
-      }).catch(e => e.message)).toContain('rejected');
+      expect(
+        await service
+          .validateAndIssueToken({
+            client_id: 'test-agent',
+            client_secret: 'any',
+          })
+          .catch((e) => e.message),
+      ).toContain('rejected');
     });
 
     it('should create JWT with correct payload structure', async () => {
@@ -184,7 +210,9 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         approvalStatus: 'APPROVED',
       };
 
-      jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(mockAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findUnique')
+        .mockResolvedValue(mockAgent as any);
       jest.spyOn(prisma.agent, 'update').mockResolvedValue(mockAgent as any);
 
       const signSpy = jest.spyOn(jwtService, 'sign').mockReturnValue('token');
@@ -212,8 +240,12 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         approvalStatus: 'APPROVED',
       };
 
-      jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(mockAgent as any);
-      const updateSpy = jest.spyOn(prisma.agent, 'update').mockResolvedValue(mockAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findUnique')
+        .mockResolvedValue(mockAgent as any);
+      const updateSpy = jest
+        .spyOn(prisma.agent, 'update')
+        .mockResolvedValue(mockAgent as any);
       jest.spyOn(jwtService, 'sign').mockReturnValue('token');
 
       await service.validateAndIssueToken({
@@ -240,7 +272,9 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         tenant: { id: 'tenant-456', name: 'Test Tenant' },
       };
 
-      jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(mockAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findUnique')
+        .mockResolvedValue(mockAgent as any);
       jest.spyOn(prisma.agent, 'update').mockResolvedValue(mockAgent as any);
 
       const result = await service.validateJwtPayload({
@@ -263,7 +297,7 @@ describe('AuthService - OAuth2 Client Credentials', () => {
           sub: 'nonexistent',
           clientId: 'test',
           tenantId: 'tenant',
-        })
+        }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -274,14 +308,16 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         approvalStatus: 'APPROVED',
       };
 
-      jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(mockAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findUnique')
+        .mockResolvedValue(mockAgent as any);
 
       await expect(
         service.validateJwtPayload({
           sub: 'agent-123',
           clientId: 'test',
           tenantId: 'tenant',
-        })
+        }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -292,14 +328,16 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         approvalStatus: 'REJECTED', // Was approved when token issued, now rejected
       };
 
-      jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(mockAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findUnique')
+        .mockResolvedValue(mockAgent as any);
 
       await expect(
         service.validateJwtPayload({
           sub: 'agent-123',
           clientId: 'test',
           tenantId: 'tenant',
-        })
+        }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -314,8 +352,12 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         tenant: { id: 'tenant-456', name: 'Test Tenant' },
       };
 
-      jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(mockAgent as any);
-      const updateSpy = jest.spyOn(prisma.agent, 'update').mockResolvedValue(mockAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findUnique')
+        .mockResolvedValue(mockAgent as any);
+      const updateSpy = jest
+        .spyOn(prisma.agent, 'update')
+        .mockResolvedValue(mockAgent as any);
 
       await service.validateJwtPayload({
         sub: 'agent-123',
@@ -325,7 +367,7 @@ describe('AuthService - OAuth2 Client Credentials', () => {
 
       // Update is fire-and-forget, but spy should be called
       // Give it a moment to execute
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       expect(updateSpy).toHaveBeenCalled();
     });
   });
@@ -354,9 +396,13 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         approvalStatus: 'PENDING',
       };
 
-      jest.spyOn(prisma.registrationToken, 'findUnique').mockResolvedValue(mockToken as any);
+      jest
+        .spyOn(prisma.registrationToken, 'findUnique')
+        .mockResolvedValue(mockToken as any);
       jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(null); // ClientId available
-      jest.spyOn(prisma, '$transaction').mockResolvedValue([mockCreatedAgent, {}] as any);
+      jest
+        .spyOn(prisma, '$transaction')
+        .mockResolvedValue([mockCreatedAgent, {}] as any);
 
       const result = await service.registerAgent({
         registrationToken: 'reg_validtoken',
@@ -377,7 +423,9 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         group: { tenantId: 'tenant-123' },
       };
 
-      jest.spyOn(prisma.registrationToken, 'findUnique').mockResolvedValue(mockToken as any);
+      jest
+        .spyOn(prisma.registrationToken, 'findUnique')
+        .mockResolvedValue(mockToken as any);
 
       await expect(
         service.registerAgent({
@@ -385,14 +433,18 @@ describe('AuthService - OAuth2 Client Credentials', () => {
           name: 'Agent',
           clientId: 'agent',
           clientSecret: 'secret',
-        })
+        }),
       ).rejects.toThrow(BadRequestException);
-      expect(await service.registerAgent({
-        registrationToken: 'reg_expired',
-        name: 'Agent',
-        clientId: 'agent',
-        clientSecret: 'secret',
-      }).catch(e => e.message)).toContain('expired');
+      expect(
+        await service
+          .registerAgent({
+            registrationToken: 'reg_expired',
+            name: 'Agent',
+            clientId: 'agent',
+            clientSecret: 'secret',
+          })
+          .catch((e) => e.message),
+      ).toContain('expired');
     });
 
     it('should reject exhausted registration token', async () => {
@@ -405,7 +457,9 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         group: { tenantId: 'tenant-123' },
       };
 
-      jest.spyOn(prisma.registrationToken, 'findUnique').mockResolvedValue(mockToken as any);
+      jest
+        .spyOn(prisma.registrationToken, 'findUnique')
+        .mockResolvedValue(mockToken as any);
 
       await expect(
         service.registerAgent({
@@ -413,14 +467,18 @@ describe('AuthService - OAuth2 Client Credentials', () => {
           name: 'Agent',
           clientId: 'agent',
           clientSecret: 'secret',
-        })
+        }),
       ).rejects.toThrow(BadRequestException);
-      expect(await service.registerAgent({
-        registrationToken: 'reg_exhausted',
-        name: 'Agent',
-        clientId: 'agent',
-        clientSecret: 'secret',
-      }).catch(e => e.message)).toContain('maximum uses');
+      expect(
+        await service
+          .registerAgent({
+            registrationToken: 'reg_exhausted',
+            name: 'Agent',
+            clientId: 'agent',
+            clientSecret: 'secret',
+          })
+          .catch((e) => e.message),
+      ).toContain('maximum uses');
     });
 
     it('should reject revoked registration token', async () => {
@@ -430,7 +488,9 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         group: { tenantId: 'tenant-123' },
       };
 
-      jest.spyOn(prisma.registrationToken, 'findUnique').mockResolvedValue(mockToken as any);
+      jest
+        .spyOn(prisma.registrationToken, 'findUnique')
+        .mockResolvedValue(mockToken as any);
 
       await expect(
         service.registerAgent({
@@ -438,14 +498,18 @@ describe('AuthService - OAuth2 Client Credentials', () => {
           name: 'Agent',
           clientId: 'agent',
           clientSecret: 'secret',
-        })
+        }),
       ).rejects.toThrow(BadRequestException);
-      expect(await service.registerAgent({
-        registrationToken: 'reg_revoked',
-        name: 'Agent',
-        clientId: 'agent',
-        clientSecret: 'secret',
-      }).catch(e => e.message)).toContain('revoked');
+      expect(
+        await service
+          .registerAgent({
+            registrationToken: 'reg_revoked',
+            name: 'Agent',
+            clientId: 'agent',
+            clientSecret: 'secret',
+          })
+          .catch((e) => e.message),
+      ).toContain('revoked');
     });
 
     it('should reject duplicate clientId', async () => {
@@ -464,8 +528,12 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         clientId: 'duplicate-client',
       };
 
-      jest.spyOn(prisma.registrationToken, 'findUnique').mockResolvedValue(mockToken as any);
-      jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(existingAgent as any);
+      jest
+        .spyOn(prisma.registrationToken, 'findUnique')
+        .mockResolvedValue(mockToken as any);
+      jest
+        .spyOn(prisma.agent, 'findUnique')
+        .mockResolvedValue(existingAgent as any);
 
       await expect(
         service.registerAgent({
@@ -473,14 +541,18 @@ describe('AuthService - OAuth2 Client Credentials', () => {
           name: 'New Agent',
           clientId: 'duplicate-client',
           clientSecret: 'secret',
-        })
+        }),
       ).rejects.toThrow(ConflictException);
-      expect(await service.registerAgent({
-        registrationToken: 'reg_valid',
-        name: 'New Agent',
-        clientId: 'duplicate-client',
-        clientSecret: 'secret',
-      }).catch(e => e.message)).toContain('already exists');
+      expect(
+        await service
+          .registerAgent({
+            registrationToken: 'reg_valid',
+            name: 'New Agent',
+            clientId: 'duplicate-client',
+            clientSecret: 'secret',
+          })
+          .catch((e) => e.message),
+      ).toContain('already exists');
     });
 
     it('should create agent with PENDING status and increment usage', async () => {
@@ -503,9 +575,13 @@ describe('AuthService - OAuth2 Client Credentials', () => {
         tenantId: 'tenant-123',
       };
 
-      jest.spyOn(prisma.registrationToken, 'findUnique').mockResolvedValue(mockToken as any);
+      jest
+        .spyOn(prisma.registrationToken, 'findUnique')
+        .mockResolvedValue(mockToken as any);
       jest.spyOn(prisma.agent, 'findUnique').mockResolvedValue(null);
-      jest.spyOn(prisma, '$transaction').mockResolvedValue([mockCreatedAgent, mockToken] as any);
+      jest
+        .spyOn(prisma, '$transaction')
+        .mockResolvedValue([mockCreatedAgent, mockToken] as any);
 
       const result = await service.registerAgent({
         registrationToken: 'reg_valid',

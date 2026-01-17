@@ -73,17 +73,27 @@ describe('ObserverService - Approval Workflow', () => {
       };
 
       // First call to findFirst (in approveAgent check)
-      jest.spyOn(prisma.agent, 'findFirst').mockResolvedValueOnce(mockPendingAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findFirst')
+        .mockResolvedValueOnce(mockPendingAgent as any);
       // Second call to findFirst (in getAgent after approval)
-      jest.spyOn(prisma.agent, 'findFirst').mockResolvedValueOnce(mockApprovedAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findFirst')
+        .mockResolvedValueOnce(mockApprovedAgent as any);
 
-      jest.spyOn(prisma.group, 'findUnique').mockResolvedValue(mockGroup as any);
+      jest
+        .spyOn(prisma.group, 'findUnique')
+        .mockResolvedValue(mockGroup as any);
       jest.spyOn(prisma, '$transaction').mockImplementation(async () => {
         // Just return success - actual implementation happens in the transaction
         return undefined;
       });
 
-      const result = await service.approveAgent('tenant-456', 'agent-123', 'approver-id');
+      const result = await service.approveAgent(
+        'tenant-456',
+        'agent-123',
+        'approver-id',
+      );
 
       expect(result.approvalStatus).toBe('APPROVED');
       expect(prisma.$transaction).toHaveBeenCalled();
@@ -93,7 +103,7 @@ describe('ObserverService - Approval Workflow', () => {
       jest.spyOn(prisma.agent, 'findFirst').mockResolvedValue(null);
 
       await expect(
-        service.approveAgent('tenant-456', 'nonexistent', 'approver-id')
+        service.approveAgent('tenant-456', 'nonexistent', 'approver-id'),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -107,10 +117,13 @@ describe('ObserverService - Approval Workflow', () => {
       jest.spyOn(prisma.agent, 'findFirst').mockResolvedValue(mockAgent as any);
 
       await expect(
-        service.approveAgent('tenant-456', 'agent-123', 'approver-id')
+        service.approveAgent('tenant-456', 'agent-123', 'approver-id'),
       ).rejects.toThrow(BadRequestException);
-      expect(await service.approveAgent('tenant-456', 'agent-123', 'approver-id')
-        .catch(e => e.message)).toContain('not pending');
+      expect(
+        await service
+          .approveAgent('tenant-456', 'agent-123', 'approver-id')
+          .catch((e) => e.message),
+      ).toContain('not pending');
     });
 
     it('should enforce tenant isolation (cannot approve other tenant agent)', async () => {
@@ -123,7 +136,7 @@ describe('ObserverService - Approval Workflow', () => {
       jest.spyOn(prisma.agent, 'findFirst').mockResolvedValue(null); // No match for tenant-456
 
       await expect(
-        service.approveAgent('tenant-456', 'agent-123', 'approver-id')
+        service.approveAgent('tenant-456', 'agent-123', 'approver-id'),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -145,17 +158,23 @@ describe('ObserverService - Approval Workflow', () => {
       };
 
       // First call (in rejectAgent check)
-      jest.spyOn(prisma.agent, 'findFirst').mockResolvedValueOnce(mockPendingAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findFirst')
+        .mockResolvedValueOnce(mockPendingAgent as any);
       // Second call (in getAgent after rejection)
-      jest.spyOn(prisma.agent, 'findFirst').mockResolvedValueOnce(mockRejectedAgent as any);
+      jest
+        .spyOn(prisma.agent, 'findFirst')
+        .mockResolvedValueOnce(mockRejectedAgent as any);
 
-      const updateSpy = jest.spyOn(prisma.agent, 'update').mockResolvedValue(mockRejectedAgent as any);
+      const updateSpy = jest
+        .spyOn(prisma.agent, 'update')
+        .mockResolvedValue(mockRejectedAgent as any);
 
       const result = await service.rejectAgent(
         'tenant-456',
         'agent-123',
         'rejecter-id',
-        { reason: 'Insufficient credentials' }
+        { reason: 'Insufficient credentials' },
       );
 
       expect(result.approvalStatus).toBe('REJECTED');
@@ -177,7 +196,7 @@ describe('ObserverService - Approval Workflow', () => {
       jest.spyOn(prisma.agent, 'findFirst').mockResolvedValue(null);
 
       await expect(
-        service.rejectAgent('tenant-456', 'nonexistent', 'rejecter-id')
+        service.rejectAgent('tenant-456', 'nonexistent', 'rejecter-id'),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -191,17 +210,24 @@ describe('ObserverService - Approval Workflow', () => {
       jest.spyOn(prisma.agent, 'findFirst').mockResolvedValue(mockAgent as any);
 
       await expect(
-        service.rejectAgent('tenant-456', 'agent-123', 'rejecter-id')
+        service.rejectAgent('tenant-456', 'agent-123', 'rejecter-id'),
       ).rejects.toThrow(BadRequestException);
-      expect(await service.rejectAgent('tenant-456', 'agent-123', 'rejecter-id')
-        .catch(e => e.message)).toContain('not pending');
+      expect(
+        await service
+          .rejectAgent('tenant-456', 'agent-123', 'rejecter-id')
+          .catch((e) => e.message),
+      ).toContain('not pending');
     });
 
     it('should enforce tenant isolation (cannot reject other tenant agent)', async () => {
       jest.spyOn(prisma.agent, 'findFirst').mockResolvedValue(null); // No match
 
       await expect(
-        service.rejectAgent('tenant-456', 'agent-from-other-tenant', 'rejecter-id')
+        service.rejectAgent(
+          'tenant-456',
+          'agent-from-other-tenant',
+          'rejecter-id',
+        ),
       ).rejects.toThrow(NotFoundException);
     });
   });
