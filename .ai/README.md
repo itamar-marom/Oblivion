@@ -68,8 +68,10 @@ This directory is organized into focused instruction files:
 ### Core Instructions
 
 - **README.md** (this file) - Project overview and directory guide
+- **ALIGNMENT_REPORT.md** - 🆕 Documentation vs implementation comparison (Generated: 2026-01-17)
+- **ROADMAP.md** - 🆕 Planned features and development phases
 - **repository-structure.md** - Monorepo structure, component organization, and development patterns
-- **architecture.md** - System architecture, design patterns, and key decisions
+- **architecture.md** - System architecture, design patterns, and key decisions (✅ Updated with implementation status)
 - **backend-python.md** - Python backend guidelines (FastAPI, SQLModel, Pydantic)
 - **backend-node.md** - Node.js/TypeScript backend guidelines (Hono, Drizzle, Zod)
 - **frontend.md** - Frontend development guidelines (Next.js, React, TypeScript)

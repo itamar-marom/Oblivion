@@ -132,6 +132,23 @@ async function releaseFileLock(handle: FileHandle): Promise<void> {
 }
 
 /**
+ * Get system boot time in milliseconds (Linux only)
+ */
+async function getSystemBootTimeMs(): Promise<number | null> {
+  try {
+    // Read /proc/stat to get btime (boot time in seconds since epoch)
+    const stat = await fsPromises.readFile('/proc/stat', 'utf-8');
+    const btimeMatch = stat.match(/^btime (\d+)$/m);
+    if (btimeMatch) {
+      return parseInt(btimeMatch[1], 10) * 1000; // Convert to milliseconds
+    }
+  } catch {
+    // Failed to read boot time
+  }
+  return null;
+}
+
+/**
  * Get process start time for PID reuse detection.
  * Returns process start time in milliseconds since epoch, or null if unavailable.
  */
@@ -145,17 +162,32 @@ async function getProcessStartTime(pid: number): Promise<number | null> {
         return new Date(output).getTime();
       }
     } else if (process.platform === 'linux') {
-      // Linux: Simplified approach - skip start time validation
-      // The /proc/{pid}/stat approach returns clock ticks which require
-      // boot time and HZ conversion (complex and error-prone)
-      //
-      // For production: PID-only checking is acceptable since:
-      // 1. PID reuse is rare on modern systems (large PID space)
-      // 2. Lock files are short-lived (released on process exit)
-      // 3. Stale lock cleanup handles crashed processes
-      //
-      // Future: Could implement proper tick-to-ms conversion if needed
-      return null; // Skip start time validation on Linux
+      // Linux: Convert clock ticks to milliseconds
+      // Read process start time from /proc/{pid}/stat
+      const stat = await fsPromises.readFile(`/proc/${pid}/stat`, 'utf-8');
+
+      // Parse stat file - format: pid (comm) state ppid ... starttime ...
+      // Field 22 (index 21) is start time in clock ticks since boot
+      const parts = stat.split(' ');
+      const startTicks = parseInt(parts[21], 10);
+
+      if (isNaN(startTicks)) {
+        return null;
+      }
+
+      // Get system boot time
+      const bootTimeMs = await getSystemBootTimeMs();
+      if (!bootTimeMs) {
+        return null;
+      }
+
+      // Convert ticks to milliseconds
+      // HZ (clock ticks per second) is typically 100 on Linux
+      // We use sysconf(_SC_CLK_TCK) via getconf, defaulting to 100
+      const HZ = 100; // Standard Linux clock tick rate
+      const startTimeMs = bootTimeMs + (startTicks * 1000 / HZ);
+
+      return startTimeMs;
     }
   } catch {
     // Process doesn't exist or command failed

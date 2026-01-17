@@ -82,16 +82,9 @@ describe('ProfileLockManager - Integration Tests', () => {
     await releaseProfileLock(testPid);
   });
 
-  it('should detect PID reuse via start time mismatch on macOS', async () => {
+  it('should detect PID reuse via start time mismatch', async () => {
     // CRITICAL SECURITY TEST: PID reuse attack prevention
-    // Note: Linux implementation skips start time validation (returns null from getProcessStartTime)
-    // This test only validates the feature on macOS where ps command is available
-
-    if (os.platform() !== 'darwin') {
-      // Skip on Linux - start time validation not implemented
-      console.log('Skipping PID reuse test on Linux (start time validation not available)');
-      return;
-    }
+    // Works on both macOS (ps command) and Linux (/proc conversion)
 
     // Create a lock manually with WRONG start time (simulating reused PID)
     const testPid = process.pid;

@@ -4,6 +4,16 @@
 
 **Reference**: See [`../product/PRD.md`](../product/PRD.md) for detailed product requirements.
 
+**Last Updated**: 2026-01-17
+
+**Implementation Status Legend:**
+- ✅ **Implemented** - Feature is fully built and working
+- ⚠️ **Partial** - Feature is partially implemented
+- 🔮 **Planned** - Feature is documented but not yet built
+- ❌ **Deprecated** - Feature is no longer planned
+
+> **Note:** For a comprehensive comparison of documentation vs implementation, see [ALIGNMENT_REPORT.md](./ALIGNMENT_REPORT.md)
+
 ---
 
 ## System Architecture
@@ -32,7 +42,9 @@ Oblivion operates on a **Hub-and-Spoke** model, where the Nexus (hub) routes eve
 
 ## Core Components
 
-### 1. The Nexus (Backend - NestJS)
+### 1. The Nexus (Backend - NestJS) ✅
+
+**Status:** ✅ **Fully Implemented**
 
 **Purpose**: Central hub that orchestrates all communication between tools and agents.
 
@@ -64,43 +76,61 @@ apps/nexus/
 │   └── tools/              # Tool gateway for secure execution
 ```
 
-### 2. The Memory Bank (Vector Store - Qdrant)
+### 2. The Memory Bank (Vector Store - Qdrant) 🔮
+
+**Status:** 🔮 **Planned - Not Implemented**
+
+> **Implementation Note:** While Qdrant is included in the Helm chart dependencies and a `rag-ingestion` queue exists, the actual RAG functionality is **not yet implemented**. No code exists for:
+> - Embedding generation
+> - Message ingestion to Qdrant
+> - Vector search endpoints
+> - Summarization jobs
 
 **Purpose**: Enable agents to perform RAG (Retrieval Augmented Generation) for context awareness.
 
-**Responsibilities**:
+**Planned Responsibilities**:
 - **Ingestion**: Embed Slack messages asynchronously (< 5s delay)
 - **Summarization**: Generate thread summaries every 50 messages
 - **Context Retrieval**: Provide relevant context to agents on request
 - **Project Isolation**: Agents can only search documents/chats linked to their project
 
-**Technology Stack**:
-- **Vector DB**: Qdrant
+**Planned Technology Stack**:
+- **Vector DB**: Qdrant (infrastructure ready in Helm)
 - **Embedding**: OpenAI embeddings (or self-hosted model)
 - **Storage**: Persistent volumes in Kubernetes
 
-**Indexing Strategy**:
+**Planned Indexing Strategy**:
 - **Collections**: One per Workgroup (Tenant)
 - **Metadata**: `project_id`, `task_id`, `thread_ts`, `timestamp`, `author`
 - **Filters**: Agents filter by `project_id` to isolate context
 
-### 3. The Tool Gateway (Secure Proxy)
+### 3. The Tool Gateway (Secure Proxy) ⚠️
 
-**Purpose**: Execute tool operations on behalf of agents without exposing credentials.
+**Status:** ⚠️ **Conflicting Documentation - Not Implemented**
 
-**Responsibilities**:
+> **IMPORTANT CONFLICT:** The PRD (FR-002) states agents execute tools **locally** with their own credentials injected into their environment. However, this architecture document describes a centralized Tool Gateway. **The centralized approach is NOT implemented.**
+>
+> **Current Reality:** Agents are expected to have tool credentials in their own environment (Kubernetes secrets, env vars). The Nexus does NOT proxy tool execution.
+
+**Original Planned Purpose**: Execute tool operations on behalf of agents without exposing credentials.
+
+**Original Planned Responsibilities**:
 - **Credential Storage**: Store encrypted third-party API keys (GitHub, AWS, etc.)
 - **Intent Processing**: Receive tool requests from agents (e.g., `{tool: "github", action: "push"}`)
 - **Secure Execution**: Execute operations with stored credentials
 - **Audit Logging**: Log all tool executions for security
 
-**Security Model**:
+**Original Planned Security Model**:
 - Agents **never** receive raw API keys
 - All credentials encrypted at rest
 - Execution happens server-side only
 - Per-workgroup credential scoping
 
-### 4. The Agent Protocol (WebSocket Interface)
+**Recommendation:** Remove this section or update PRD to match intended design.
+
+### 4. The Agent Protocol (WebSocket Interface) ✅
+
+**Status:** ✅ **Fully Implemented**
 
 **Purpose**: Standardized communication protocol for agents to connect to the Nexus.
 
@@ -428,19 +458,27 @@ TODO → CLAIMED → IN_PROGRESS → BLOCKED_ON_HUMAN → DONE
 - `GET /list/:listId/tasks`: Fetch tasks for mapping UI
 - `PATCH /task/:taskId`: Update task status
 
-### Slack Integration
+### Slack Integration ⚠️
+
+**Status:** ⚠️ **Partially Implemented**
+
+> **Implementation Note:** Slack service can POST messages but cannot RECEIVE events. The webhook endpoint exists but only handles `url_verification`. Message event processing is NOT implemented.
 
 **Authentication**: OAuth 2.0 (user installs Oblivion app in Slack workspace)
 
-**Events Handled**:
-- `message.channels`: New message in tracked channel
-- `app_mention`: User mentions Oblivion bot
-- `channel_created`: New channel (potential project)
+**Events Planned** (⚠️ Not fully implemented):
+- `message.channels`: New message in tracked channel (NOT IMPLEMENTED)
+- `app_mention`: User mentions Oblivion bot (NOT IMPLEMENTED)
+- `channel_created`: New channel (potential project) (NOT IMPLEMENTED)
 
-**API Operations**:
-- `POST /chat.postMessage`: Post agent messages to Slack
-- `POST /chat.postEphemeral`: Send private messages to users
-- `GET /conversations.history`: Fetch thread history for RAG ingestion
+**API Operations Implemented** (✅ Working):
+- ✅ `POST /chat.postMessage`: Post agent messages to Slack
+- ✅ `POST /chat.postEphemeral`: Send private messages to users
+- ✅ `GET /conversations.history`: Fetch thread history
+- ✅ Channel creation/management
+- ✅ Block Kit rich message formatting
+
+**Critical Gap:** Slack → ClickUp sync does NOT work because message events are not processed.
 
 ### Agent Integration
 
@@ -626,31 +664,38 @@ CREATE TABLE tasks (
 
 ---
 
-## Deployment Architecture
+## Deployment Architecture ⚠️
+
+**Status:** ⚠️ **Infrastructure Only - Application Deployment Not Configured**
+
+> **Critical Gap:** The Helm chart includes infrastructure dependencies (PostgreSQL, Redis, Qdrant) but **lacks deployment manifests for Nexus and Observer**. Applications must be deployed manually or via separate configuration.
 
 ### Kubernetes Components
 
-**Nexus Deployment**:
+**Nexus Deployment** (🔮 Planned):
 - Multiple replicas (3+ in production)
 - Horizontal Pod Autoscaler (HPA)
 - Resource limits: CPU, memory
 - Liveness/readiness probes
+- **Status:** No deployment manifest exists
 
-**Observer Deployment**:
+**Observer Deployment** (🔮 Planned):
 - Multiple replicas (2+ in production)
 - CDN for static assets (if applicable)
 - Server-side rendering (SSR)
+- **Status:** No deployment manifest exists
 
-**Infrastructure**:
-- PostgreSQL (Bitnami Helm chart)
-- Redis (Bitnami Helm chart)
-- Qdrant (Official Helm chart)
-- Langfuse (Self-hosted chart for LLM tracing)
+**Infrastructure** (✅ Configured):
+- ✅ PostgreSQL v16.2 (Bitnami Helm chart)
+- ✅ Redis v20.5 (Bitnami Helm chart)
+- ✅ Qdrant v0.9 (Official Helm chart)
+- ❌ Langfuse (Not included in Helm chart)
 
-**Ingress**:
-- Kong API Gateway
+**Ingress** (🔮 Planned):
+- Kong API Gateway (not configured)
 - Routes: `/api/*` → Nexus, `/` → Observer
 - Rate limiting, authentication plugins
+- **Status:** No ingress manifest exists
 
 ### Helm Chart Structure
 
@@ -782,7 +827,25 @@ infra/helm/
 
 ---
 
+## Implementation Status Summary
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Nexus Backend | ✅ Complete | OAuth2, WebSocket, integrations, queue processing |
+| Observer Dashboard | ✅ Complete | Full UI for agent/group/project management |
+| Python SDK | ✅ Complete | Production-ready with examples |
+| Database Schema | ✅ Complete | All tables and relationships |
+| ClickUp Integration | ✅ Complete | Webhooks, @tag routing, API operations |
+| Slack Integration | ⚠️ Partial | Can post messages, cannot receive events |
+| Memory Bank/RAG | 🔮 Planned | Infrastructure ready, code not implemented |
+| Tool Gateway | ⚠️ Conflicting | PRD says local execution, architecture.md says centralized |
+| Kubernetes Deployment | ⚠️ Partial | Infrastructure only, no app manifests |
+| Langfuse Tracing | 🔮 Planned | Not integrated |
+
+---
+
 *This architecture evolves with the product. See [self-improvement.md](./self-improvement.md) for proposing architectural improvements.*
 
-**Last Updated**: 2026-01-02
+**Last Updated**: 2026-01-17 (implementation status audit)
 **Reference**: [`product/PRD.md`](../product/PRD.md) Section 2
+**Alignment Report**: [ALIGNMENT_REPORT.md](./ALIGNMENT_REPORT.md)
